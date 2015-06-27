@@ -1,7 +1,11 @@
+#gdb
+
 in gdb, hook connect with:
 ```
 b connect if (char) *$rsi == 0x02 && (char) *($rsi + 4) == 0x42
 ```
+
+# strace
 
 tib also uses recvfrom (not recv) and send (not sendto). don't listen to strace,
 which logs send calls as sendto (which presented a huge misleading point for
@@ -42,6 +46,8 @@ def send_universe(msg):
     msg = "\x00" + chr(len(packet)) + packet
     return msg
 ```
+
+# monodis
 
 ## client request codes
 
