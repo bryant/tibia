@@ -165,5 +165,5 @@ recvloop sock = do
     putStrLn $ "Received: " ++ hd stuff
     recvloop sock
     where
-    hex n = showHex n ""
+    hex n = if n < 16 then '0' : showHex n "" else showHex n ""
     hd = unwords . map hex . BStr.unpack
