@@ -34,6 +34,7 @@ import Network.BSD (getProtocolNumber, getHostByName, hostAddress)
 import Numeric (showHex)
 
 import Control.Concurrent (threadDelay, forkIO)
+import XXD (xxd)
 
 data Account
     = Account
@@ -184,8 +185,7 @@ ping_thread sock = do
 recvloop :: Socket -> IO ()
 recvloop sock = do
     stuff <- recv sock 1024
-    putStrLn $ "Received: " ++ hd stuff
+    putStrLn "Received: "
+    putStrLn $ xxd 16 4 stuff
+    putStrLn ""
     recvloop sock
-    where
-    hex n = if n < 16 then '0' : showHex n "" else showHex n ""
-    hd = unwords . map hex . BStr.unpack
