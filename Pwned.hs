@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
 module Pwned where
 
@@ -27,10 +27,13 @@ import Network.Socket
     , SocketType(Stream)
     , connect
     , SockAddr(SockAddrInet)
+    , Socket
     )
 import Network.Socket.ByteString (recv, send)
 import Network.BSD (getProtocolNumber, getHostByName, hostAddress)
 import Numeric (showHex)
+
+import Control.Concurrent (threadDelay, forkIO)
 
 data Account
     = Account
@@ -55,6 +58,15 @@ data Node = Rift Word8 Word8 | NonRift Word8 Word8
 data TibRequest
     = Auth ByteString Account  -- ^ iv, account params
     | Ping
+
+data TimeUnit = Sec | Msec | Usec deriving Show
+
+instance Num a => Num (TimeUnit -> a) where
+    fromInteger n = fromIntegral . go
+        where
+        go Usec = n
+        go Msec = n * 1000
+        go Sec =  n * 1000000
 
 md5sum :: Account
 md5sum = Account
@@ -156,10 +168,20 @@ main = withSocketsDo $ do
             putStrLn $ "IV received: " ++ show iv
             putStrLn $ "Sending md5sum's creds: " ++ show md5sum
             send sock . put_tib_request $ Auth iv md5sum
+
+            forkIO $ ping_thread sock
             recvloop sock
         Right unknown-> do
             putStrLn $ "Unknown response from server: " ++ show unknown
 
+ping_thread :: Socket -> IO ()
+ping_thread sock = do
+    send sock $ put_tib_request Ping
+    threadDelay $ 15 Sec
+    -- TODO: do something about the inevitable server response
+    ping_thread sock
+
+recvloop :: Socket -> IO ()
 recvloop sock = do
     stuff <- recv sock 1024
     putStrLn $ "Received: " ++ hd stuff
