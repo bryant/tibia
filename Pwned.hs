@@ -12,6 +12,7 @@ import Data.Serialize
     , getByteString
     , runGetPartial
     , runGet
+    , Result(..)
     )
 import Control.Applicative ((<$>), (<*>))
 import Crypto.Cipher.AES (initAES, encryptCBC)
@@ -34,7 +35,7 @@ import Network.BSD (getProtocolNumber, getHostByName, hostAddress)
 import Numeric (showHex)
 
 import Control.Concurrent (threadDelay, forkIO)
-import XXD (xxd)
+import XXD (xxd, as_hex)
 
 data Account
     = Account
@@ -171,7 +172,7 @@ main = withSocketsDo $ do
             send sock . put_tib_request $ Auth iv md5sum
 
             forkIO $ ping_thread sock
-            recvloop sock
+            recvloop sock $ runGetPartial get_tib_response
         Right unknown-> do
             putStrLn $ "Unknown response from server: " ++ show unknown
 
@@ -182,10 +183,22 @@ ping_thread sock = do
     -- TODO: do something about the inevitable server response
     ping_thread sock
 
-recvloop :: Socket -> IO ()
-recvloop sock = do
-    stuff <- recv sock 1024
-    putStrLn "Received: "
-    putStrLn $ xxd 16 4 stuff
-    putStrLn ""
-    recvloop sock
+recvloop :: Socket -> (ByteString -> Result TibResponse) -> IO ()
+recvloop sock f = do
+    bytes <- recv sock 1024
+    newf <- consume_with f bytes
+    recvloop sock newf
+
+consume_with f bytes = do
+    case f bytes of
+        Partial f -> return f
+        Fail err remaining -> do
+            putStrLn $ "parse error on " ++ xxd 16 4 bytes
+            putStrLn $ "error was: " ++ err
+            consume_with (runGetPartial get_tib_response) remaining
+        Done (Unknown cmd hex) remaining -> do
+            putStrLn $ "Unknown command " ++ as_hex cmd ++ "\n" ++ xxd 16 4 hex
+            consume_with (runGetPartial get_tib_response) remaining
+        Done response remaining -> do
+            putStr "Received " >> print response >> putStrLn "\n"
+            consume_with (runGetPartial get_tib_response) remaining
