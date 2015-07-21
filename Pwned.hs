@@ -8,6 +8,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Serialize
     ( Get
     , getWord8
+    , getWord16be
     , ensure
     , getByteString
     , runGetPartial
@@ -91,8 +92,7 @@ expect8 byte = getWord8 >>= \b -> guard (b == byte)
 
 get_tib_response :: Get TibResponse
 get_tib_response = do
-    expect8 0x00
-    len <- getWord8  -- remaining bytes in current packet
+    len <- getWord16be  -- packet length sans first two
     ensure $ fromIntegral len
     command <- getWord8
     parse_response command $ fromIntegral len - 1
