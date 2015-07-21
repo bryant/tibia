@@ -5,14 +5,17 @@ import Data.ByteString (ByteString)
 import Data.Char (chr)
 import Data.Word (Word8)
 import Data.List (intercalate)
-import Numeric (showHex)
+import Text.Printf (printf)
 
 xxd :: Int -> Int -> ByteString -> String
-xxd rowsize groupsize raw = unlines $ map (xxd_row rowsize groupsize) rows
+xxd rowsize groupsize raw = unlines $
+        zipWith (xxd_row rowsize groupsize) rows [0, rowsize..]
     where rows = BStr.unpack raw `groups_of` rowsize
 
-xxd_row :: Int -> Int -> [Word8] -> String
-xxd_row rowsize grpsize row = hexes ++ spacer ++ ascii ++ '\n':chars ++ spacer
+xxd_row :: Int -> Int -> [Word8] -> Int -> String
+xxd_row rowsize grpsize row offset =
+        printf "%08x" offset ++ " │ " ++ hexes ++ spacer ++ ascii ++ "\n" ++
+        replicate 8 ' ' ++ " │ " ++ chars ++ spacer
     where
     chunked = intercalate "  " . map unwords . flip groups_of grpsize
     hexes = chunked $ map as_hex row
@@ -35,4 +38,4 @@ as_ascii fillval byte = if printable byte then chr $ fromIntegral byte
     where printable b = b >= 32 && b <= 126
 
 as_hex :: Word8 -> String
-as_hex b = if b < 16 then '0' : showHex b "" else showHex b ""
+as_hex = printf "%02x"

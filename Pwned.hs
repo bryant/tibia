@@ -33,7 +33,6 @@ import Network.Socket
     )
 import Network.Socket.ByteString (recv, send)
 import Network.BSD (getProtocolNumber, getHostByName, hostAddress)
-import Numeric (showHex)
 
 import Control.Concurrent (threadDelay, forkIO)
 import XXD (xxd, as_hex)
