@@ -5,6 +5,7 @@ module Pwned where
 import qualified Data.ByteString as BStr
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as L
+import qualified Data.IntMap as IntMap
 import Data.Serialize
     ( Get
     , getWord8
@@ -36,6 +37,7 @@ import Network.BSD (getProtocolNumber, getHostByName, hostAddress)
 
 import Control.Concurrent (threadDelay, forkIO)
 import XXD (xxd, as_hex)
+import LibTIB.Entity
 
 data Account
     = Account
@@ -50,16 +52,38 @@ data Account
 data TibResponse
     = Challenge ByteString Word8  -- ^ iv and version byte
     | Alive
-    | UpdateSector ByteString
-    -- | 
+    | ChatEvent ByteString ByteString ByteString ChatType
+    | UpdateSectorEnts Node (IntMap.IntMap Entity)
     | Unknown Word8 ByteString
     deriving Show
 
-data Node = Rift Word8 Word8 | NonRift Word8 Word8
+data ChatType
+    = Server
+    | Corp
+    | Sector
+    | Private
+    | Alliance
+    | Console
+    | Event
+    | Alert
+    | Market
+    | MarketEvent
+    | Universe
+    | NullChatType  -- 0xffffff80
+    deriving (Show, Enum)
+
+data Node = Rift Word8 Word8 | NonRift Word8 Word8 deriving Show
 
 data TibRequest
     = Auth ByteString Account  -- ^ iv, account params
+    | NewAcc ByteString Account
+    | Move Direction
     | Ping
+
+data Direction
+    = Northwest | North | Northeast | East | Southeast | South | Southwest
+    | West
+    deriving (Show, Enum)
 
 data TimeUnit = Sec | Msec | Usec deriving Show
 
@@ -92,7 +116,6 @@ expect8 byte = getWord8 >>= \b -> guard (b == byte)
 get_tib_response :: Get TibResponse
 get_tib_response = do
     len <- getWord16be  -- packet length sans first two
-    ensure $ fromIntegral len
     command <- getWord8
     parse_response command $ fromIntegral len - 1
 
@@ -102,37 +125,57 @@ parse_response 0x84 _ =
 
 parse_response 0x86 _ = return Alive
 
+parse_response 0xbe _ =
+    ChatEvent <$> parse_tib_string <*> parse_tib_string <*> parse_tib_string
+              <*> (chat_type <$> getWord8)
+    where
+    chat_type 0x80 = NullChatType
+    chat_type n = toEnum $ fromIntegral n
+
+parse_response 0x8f _ = do
+    -- UpdateCurrentSector
+    rift <- getWord8
+    xpos <- getWord8
+    ypos <- getWord8
+    entity_count <- fromIntegral <$> getWord16be
+    entities <- sequence $ replicate entity_count get_entity
+    let node = (if rift == 0 then NonRift else Rift) xpos ypos
+    return . UpdateSectorEnts node . IntMap.fromList $
+        map (\(eid, e) -> (fromIntegral eid, e)) entities
+
 -- parse_response 0x9e _ = 
 
 parse_response unknown_code remaining =
     Unknown unknown_code <$> getByteString remaining
 
-tib_false, tib_true :: Num a => a
+parse_tib_string :: Get ByteString
+parse_tib_string = getWord8 >>= getByteString . fromIntegral
+
+tib_false, tib_true, gray_server :: Num a => a
 tib_false = 0x80
 tib_true = 0x7f
+gray_server = 0x03  -- gray server id: 0x03
 
 put_tib_request :: TibRequest -> ByteString
-put_tib_request (Auth iv (Account user pass devid devtype cliver)) =
-    as_tib_packet 0xbd . build_strict $ mconcat [
-          len_as_16be user
-        , len_as_16be pass
-        , len_as_16be devid
-        , len_as_16be devtype
-        , len_as_16be cliver
-        , encbuilder user
-        , encbuilder pass
-        , encbuilder devid
-        , encbuilder devtype
-        , encbuilder cliver
+put_tib_request (Auth iv acc) = as_tib_packet 0xbd . build_strict $ mconcat [
+          build_auth iv acc
         , Builder.word8 tib_false  -- new account: false
         , Builder.word8 tib_false  -- hardcore: false
         , Builder.word8 gray_server
-        ]
-    where
-    len_as_16be = Builder.word16BE . fromIntegral . BStr.length . enc
-    enc = aes128_cbc_pkcs7_enc tib_key iv
-    encbuilder = Builder.byteString . enc
-    gray_server = 0x03  -- gray server id: 0x03
+    ]
+
+put_tib_request (NewAcc iv acc) = as_tib_packet 0xbd . build_strict $ mconcat [
+          build_auth iv acc
+        , Builder.word8 tib_true -- new account: true
+        , Builder.word8 tib_false
+        , Builder.word8 gray_server
+        , Builder.word16BE 0x00  -- face as u16
+        , Builder.word16BE 0x00  -- attributes
+        , Builder.word16BE 0x00  -- hair
+    ]
+
+put_tib_request (Move dir) =
+    as_tib_packet 0xc6 . BStr.singleton . fromIntegral $ fromEnum dir
 
 put_tib_request Ping = as_tib_packet 0x86 ""
 
@@ -143,6 +186,24 @@ as_tib_packet code payload = build_strict $ mconcat
     , Builder.word8 code
     , Builder.byteString payload
     ]
+
+build_auth :: ByteString -> Account -> Builder.Builder
+build_auth iv (Account user pass devid devtype cliver) = mconcat [
+          len_as_16be user
+        , len_as_16be pass
+        , len_as_16be devid
+        , len_as_16be devtype
+        , len_as_16be cliver
+        , encbuilder user
+        , encbuilder pass
+        , encbuilder devid
+        , encbuilder devtype
+        , encbuilder cliver
+    ]
+    where
+    len_as_16be = Builder.word16BE . fromIntegral . BStr.length . enc
+    enc = aes128_cbc_pkcs7_enc tib_key iv
+    encbuilder = Builder.byteString . enc
 
 build_strict = L.toStrict . Builder.toLazyByteString
 
@@ -185,8 +246,11 @@ ping_thread sock = do
 recvloop :: Socket -> (ByteString -> Result TibResponse) -> IO ()
 recvloop sock f = do
     bytes <- recv sock 1024
-    newf <- consume_with f bytes
-    recvloop sock newf
+    if bytes == ""
+        then putStrLn "Disconnected by peer." >> return ()
+        else do
+            newf <- consume_with f bytes
+            recvloop sock newf
 
 consume_with f bytes = do
     case f bytes of
@@ -199,5 +263,5 @@ consume_with f bytes = do
             putStrLn $ "Unknown command " ++ as_hex cmd ++ "\n" ++ xxd 16 4 hex
             consume_with (runGetPartial get_tib_response) remaining
         Done response remaining -> do
-            putStr "Received " >> print response >> putStrLn "\n"
+            putStrLn $ "Received " ++ show response ++ "\n"
             consume_with (runGetPartial get_tib_response) remaining
