@@ -20,7 +20,7 @@ xxd_row rowsize grpsize row offset =
     chunked = intercalate "  " . map unwords . flip groups_of grpsize
     hexes = chunked $ map as_hex row
     chars = chunked $ map ((: " ") . as_ascii ' ') row
-    ascii = map (as_ascii '.') row
+    ascii = map (as_ascii '·') row
     spacer = replicate padlen ' ' ++ " │ "
     padlen = if rlen >= rowsize then 0
                                 else width_of rowsize - width_of rlen
