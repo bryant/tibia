@@ -138,6 +138,7 @@ get_computer = do
 
 get_special = do
     (r, d, nd, boe, cls) <- get_item_stats
+    shipcls <- get_player_ship_class
     return $ Special r
 
 get_item = label "generic item" $ getWord8 >>= \c -> case c of
