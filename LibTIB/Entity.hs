@@ -7,6 +7,7 @@ import Control.Applicative ((<$>), (<*>))
 import Control.Monad (mzero)
 
 import LibTIB.ItemClasses
+import XXD (xxd)
 
 type Hull = Word16
 
@@ -205,7 +206,10 @@ get_entity = label "sector entity" $ do
         0x13 -> CargoResource <$> (toEnum . fromIntegral <$> getWord8)
                               <*> getWord16be
         0x14 -> EntityIDGAF <$> getByteString 1  -- capture point, what is it?
-        n -> fail $ "what's entity type " ++ show n
+        n -> do
+            surround <- getByteString 16
+            fail $ "what's entity type " ++ show n ++ " ? from "
+                            ++ xxd 16 4 surround
     return (entid, ent)
 
 get_tib_bool :: Get Bool
