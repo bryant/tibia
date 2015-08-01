@@ -115,13 +115,13 @@ get_item_stats = do
 
 get_weapon = do
     (r, d, nd, boe, cls) <- get_item_stats
-    ep <- getWord8
-    return $ Weapon (weap_class cls) r d nd boe ep
+    rank <- getWord8
+    return $ Weapon (weap_class cls) r d nd boe rank
 
 get_armor = do
     (r, d, nd, boe, cls) <- get_item_stats
-    ep <- getWord8
-    return $ Armor (armor_class cls) r d nd boe ep
+    rank <- getWord8
+    return $ Armor (armor_class cls) r d nd boe rank
 
 get_harvester = do
     (r, d, nd, boe, cls) <- get_item_stats
@@ -133,6 +133,7 @@ get_engine = do
 
 get_computer = do
     (r, d, nd, boe, cls) <- get_item_stats
+    shipcls <- get_player_ship_class  -- computer analogue to rank is class
     return $ Computer r
 
 get_special = do
@@ -144,7 +145,7 @@ get_item = label "generic item" $ getWord8 >>= \c -> case c of
     0x02 -> get_armor
     0x03 -> do
         (r, _, _, _, _) <- get_item_stats
-        ep <- getWord8
+        rank <- getWord8
         return $ Storage r
     0x04 -> get_harvester
     0x05 -> get_engine
