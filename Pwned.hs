@@ -251,7 +251,7 @@ recvloop :: Socket -> (ByteString -> Result TibResponse) -> IO ()
 recvloop sock f = do
     bytes <- recv sock 1024
     if bytes == ""
-        then putStrLn "Disconnected by peer." >> return ()
+        then putStrLn "Disconnected by peer."
         else do
             newf <- consume_with f bytes
             recvloop sock newf
