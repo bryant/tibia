@@ -56,7 +56,7 @@ data TibResponse
     | Alive
     | ChatEvent ByteString ByteString ByteString ChatType
     | UpdateSectorEnts Node (IntMap.IntMap Entity)
-    | AttackEvent Word32 Word32 Word32
+    | AttackEvent Word32 Word32 Word32 Bool
     | Unknown Word8 ByteString
     deriving Show
 
@@ -171,7 +171,8 @@ parse_response 0xad = do
     attacker <- getWord32be
     target <- getWord32be
     damage <- getWord32be
-    return $ AttackEvent attacker target damage
+    hit <- getWord8
+    return $ AttackEvent attacker target damage (hit /= 0x00)
 
 parse_response unknown_code =
     Unknown unknown_code <$> (remaining >>= getByteString)
