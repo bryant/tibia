@@ -67,7 +67,7 @@ main = withSocketsDo . withFile "./clive.in" ReadMode $ \h -> do
 
 eof_error e = if isEOFError e then Just () else Nothing
 
-cmd_loop sock fifo = handleJust eof_error (const $ cmd_loop sock fifo) $ do
+cmd_loop sock fifo = handleJust eof_error retry $ do
     cli <- BStr.hGetLine fifo
     case parse_command cli of
          Left err -> print err
@@ -75,6 +75,7 @@ cmd_loop sock fifo = handleJust eof_error (const $ cmd_loop sock fifo) $ do
             putStrLn $ "Sending received command: " ++ show cmd
             void . send sock $ put_tib_request cmd
     cmd_loop sock fifo
+    where retry _ = threadDelay (5 Sec) >> cmd_loop sock fifo
 
 not_spaces1 = P.many1 . P.satisfy $ not . isSpace
 
