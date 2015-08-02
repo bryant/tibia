@@ -34,7 +34,7 @@ get_ip :: Socket -> IO ByteString
 get_ip sock = do
     tor_connect sock "whatismyip.org" 80
     send sock gitit
-    recv sock 1024
+    recv sock 65536
     where
     gitit = "GET / HTTP/1.1\r\n\
             \User-Agent: curl/7.35.0\r\n\
