@@ -79,6 +79,7 @@ data TibRequest
     | NewAcc ByteString Account
     | Move Direction
     | Ping
+    deriving Show
 
 data Direction
     = Northwest | North | Northeast | East | Southeast | South | Southwest
