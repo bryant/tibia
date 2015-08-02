@@ -17,7 +17,7 @@ import Data.Serialize
     , Result(..)
     )
 import Control.Applicative ((<$>), (<*>))
-import Crypto.Cipher.AES (initAES, encryptCBC)
+import Crypto.Cipher.AES (initAES, encryptCBC, decryptCBC)
 import Data.ByteString (ByteString)
 import Control.Monad (guard)
 import Data.Word (Word8)
@@ -211,6 +211,9 @@ build_strict = L.toStrict . Builder.toLazyByteString
 aes128_cbc_pkcs7_enc :: ByteString -> ByteString -> ByteString -> ByteString
 aes128_cbc_pkcs7_enc key iv plaintext = encrypt iv $ padded plaintext
     where encrypt = encryptCBC $ initAES key
+
+aes128_cbc_pkcs7_dec :: ByteString -> ByteString -> ByteString -> ByteString
+aes128_cbc_pkcs7_dec key = decryptCBC $ initAES key
 
 padded bs = bs `BStr.append` padding
     where
