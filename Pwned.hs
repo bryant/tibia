@@ -105,6 +105,24 @@ md5sum = Account
     , acc_client_version = "unity_1.3.2-L(86)"
     }
 
+moineau :: Account
+moineau = Account
+    { acc_user = "moineau"
+    , acc_pass = "volumetric"
+    , acc_device_id = "eb5332abc59f8d965989703bcdcb067e"
+    , acc_device_type = "android os 444 api19 ktu84q9042e71c samsung gti9"
+    , acc_client_version = "unity_1.3.2-AGP(86)"
+    }
+
+doctek :: Account
+doctek = Account
+    { acc_user = "doctek"
+    , acc_pass = "ketcod"
+    , acc_device_id = "cdd34b7d596a75c43c236d7a424eab5a"
+    , acc_device_type = "android os 444 api19 ktu84q9042e71c huawei p8"
+    , acc_client_version = "unity_1.3.2-AGP(86)"
+    }
+
 test_challenge = BStr.pack [0, 19, 132, 16, 88, 13, 73, 28, 92, 83, 60, 170, 220, 75, 213, 123, 196, 139, 136, 84, 86]
 
 tib_key :: ByteString
@@ -234,11 +252,12 @@ main = withSocketsDo $ do
         Right (Challenge iv ver) -> do
             putStrLn $ "Server version: " ++ show ver
             putStrLn $ "IV received: " ++ show iv
-            putStrLn $ "Sending md5sum's creds: " ++ show md5sum
-            send sock . put_tib_request $ Auth iv md5sum
+            putStrLn $ "Sending creds: " ++ show doctek
+            send sock . put_tib_request $ Auth iv doctek
 
             forkIO $ ping_thread sock
             recvloop sock $ runGetPartial get_tib_response
+
         Right unknown-> do
             putStrLn $ "Unknown response from server: " ++ show unknown
 
