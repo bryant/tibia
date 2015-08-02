@@ -14,6 +14,7 @@ import Data.Serialize
     , getByteString
     , runGetPartial
     , runGet
+    , remaining
     , Result(..)
     )
 import Control.Applicative ((<$>), (<*>))
@@ -118,22 +119,23 @@ get_tib_response :: Get TibResponse
 get_tib_response = do
     len <- getWord16be  -- packet length sans first two
     command <- getWord8
-    parse_response command $ fromIntegral len - 1
+    g <- getByteString . fromIntegral $ len - 1
+    either fail return $ runGet (parse_response command) g
 
-parse_response :: Word8 -> Int -> Get TibResponse
-parse_response 0x84 _ =
+parse_response :: Word8 -> Get TibResponse
+parse_response 0x84 =
     expect8 0x10 >> Challenge <$> getByteString 16 <*> getWord8
 
-parse_response 0x86 _ = return Alive
+parse_response 0x86 = return Alive
 
-parse_response 0xbe _ =
+parse_response 0xbe =
     ChatEvent <$> parse_tib_string <*> parse_tib_string <*> parse_tib_string
               <*> (chat_type <$> getWord8)
     where
     chat_type 0x80 = NullChatType
     chat_type n = toEnum $ fromIntegral n
 
-parse_response 0x8f _ = do
+parse_response 0x8f = do
     -- UpdateCurrentSector
     rift <- getWord8
     xpos <- getWord8
@@ -146,8 +148,8 @@ parse_response 0x8f _ = do
 
 -- parse_response 0x9e _ = 
 
-parse_response unknown_code remaining =
-    Unknown unknown_code <$> getByteString remaining
+parse_response unknown_code =
+    Unknown unknown_code <$> (remaining >>= getByteString)
 
 parse_tib_string :: Get ByteString
 parse_tib_string = getWord8 >>= getByteString . fromIntegral
