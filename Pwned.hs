@@ -22,7 +22,7 @@ import Control.Applicative ((<$>), (<*>))
 import Crypto.Cipher.AES (initAES, encryptCBC, decryptCBC)
 import Data.ByteString (ByteString)
 import Control.Monad (guard)
-import Data.Word (Word8, Word32)
+import Data.Word (Word8, Word16, Word32)
 import Data.Monoid (mconcat, mappend)
 
 import Network.Socket
@@ -56,7 +56,7 @@ data TibResponse
     | Alive
     | ChatEvent ByteString ByteString ByteString ChatType
     | UpdateSectorEnts Node (IntMap.IntMap Entity)
-    | AttackEvent Word32 Word32 Word32 Bool
+    | AttackEvent Word32 Word32 Word16 Bool
     | Unknown Word8 ByteString
     deriving Show
 
@@ -170,7 +170,7 @@ parse_response 0x8f = do
 parse_response 0xad = do
     attacker <- getWord32be
     target <- getWord32be
-    damage <- getWord32be
+    damage <- getWord16be
     hit <- getWord8
     return $ AttackEvent attacker target damage (hit /= 0x00)
 
