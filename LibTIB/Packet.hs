@@ -1,7 +1,7 @@
 module LibTIB.Packet where
 
 import LibTIB.Event ()  -- imports serialize instances
-import LibTIB.Request (command_code_of)
+import LibTIB.Request (request_code)
 
 newtype TibPacket t = TibPacket t deriving Show
 
@@ -10,7 +10,7 @@ instance Serialize t => Serialize (TibPacket t) where
         let pktdat = runPut $ put req
         let len = BStr.length pktdat + 1  -- +1 for code
         putWord16be len
-        putWord8 $ command_code_of req
+        putWord8 $ request_code req
         putByteString pktdat
 
     get = do
