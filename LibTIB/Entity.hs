@@ -59,8 +59,6 @@ type XP = Word32
 
 data Player = Player PlayerID CorpID AllianceID
 
-type Resources = (Word8, Word8, Word8, Word8, Word8)
-
 data ResourceType
     = Organic  -- = int32(0x00000000)
     | Gas  -- = int32(0x00000001)
