@@ -8,11 +8,11 @@ data TibEvent
     | Alive
     | Chat ByteString ByteString ByteString ChatType
     -- ^ message, sender, possible private recipient
-    | UpdateSectorEnts Node (IntMap.IntMap Entity)
+    | SectorEnts Node (IntMap.IntMap Entity)
     | Attacked EntID EntID Word16 Bool  -- ^ damage
     | SetShipResources EntID Resources
-    | EntityArrival EntID Entity
-    | EntityDepart EntID DepartType
+    | Arrived EntID Entity
+    | Departed EntID DepartType
     | Unknown Word8 ByteString
     deriving Show
 
