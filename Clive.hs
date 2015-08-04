@@ -29,6 +29,7 @@ import System.IO.Error (isEOFError)
 import Control.Exception (handleJust)
 import Control.Applicative ((<$>), (<*>), (<*))
 import Control.Monad (mzero, join, void)
+import Numeric (readHex, readDec)
 
 get_ip :: Socket -> IO ByteString
 get_ip sock = do
@@ -102,11 +103,36 @@ direction = trie_lookup "direction" dirs $ lexeme not_spaces1
         , ("w", West)
         ]
 
+numeral :: (Eq a, Num a) => Parser a
+numeral = do
+    (reader, digs) <- P.option (readDec, P.digit) prefix
+    fst . head . reader <$> P.many1 digs
+    where prefix = P.try $ P.string "0x" >> return (readHex, P.hexDigit)
+
+resources = (,,,,) <$> num <*> num <*> num <*> num <*> num
+    where num = lexeme numeral
+
+rarity = do
+    n <- numeral
+    if 1 <= n && n <= 7 then return $ toEnum n else mzero
+
+chat_command = do
+    -- only sector chat allowed for now
+    msg <- P.many1 P.anyChar
+    return $ ReqChat msg "" "" Sector
+
 command :: Parser TibRequest
 command = join . trie_lookup "command" cmds $ lexeme not_spaces1
     where
     cmds = R.from_list
         [ ("move", Move <$> direction)
+        , ("attack", ReqAttack <$> lexeme numeral)
+        , ("follow", ReqFollow <$> lexeme numeral)
+        , ("transfer", ReqResourceTransfer <$> lexeme numeral
+                                           <*> lexeme resources)
+        , ("chat", chat_command)
+        , ("auctionhouse", ReqAuctions <$> lexeme numeral <*> lexeme rarity)
+        , ("quit", return $ ReqDisconnect False)
         -- , ("sectormsg", CSectorChat <$> rest)
         -- , ("msg", CPrivMsg <$> rest)
         -- , ("list", CListSector)

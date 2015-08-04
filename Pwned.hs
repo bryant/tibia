@@ -57,6 +57,9 @@ data TibResponse
     | ChatEvent ByteString ByteString ByteString ChatType
     | UpdateSectorEnts Node (IntMap.IntMap Entity)
     | AttackEvent Word32 Word32 Word16 Bool
+    | SetShipResources Word32 Resources
+    | EntityArrival Word32 Entity
+    | EntityDepart Word32 DepartType
     | Unknown Word8 ByteString
     deriving Show
 
@@ -75,12 +78,29 @@ data ChatType
     | NullChatType  -- 0xffffff80
     deriving (Show, Enum)
 
+data DepartType
+    = Silent  -- = int32(0x00000000)
+    | Destroyed  -- = int32(0x00000001)
+    | Moved Direction  -- = int32(0x00000002)
+    | EarthJump  -- = int32(0x00000003)
+    | CorpJump  -- = int32(0x00000004)
+    | RiftJump  -- = int32(0x00000005)
+    | Logout  -- = int32(0x00000006)
+    | Dragged Direction  -- = int32(0x00000007)
+    deriving Show
+
 data Node = Rift Word8 Word8 | NonRift Word8 Word8 deriving Show
 
 data TibRequest
     = Auth ByteString Account  -- ^ iv, account params
     | NewAcc ByteString Account
     | Move Direction
+    | ReqAttack Word32  -- ^ entity id, 0x8000_0000 to disengage attack
+    | ReqFollow Word32
+    | ReqResourceTransfer Word32 Resources
+    | ReqChat String String String ChatType
+    | ReqDisconnect Bool
+    | ReqAuctions Word8 Rarity
     | Ping
     deriving Show
 
@@ -166,6 +186,27 @@ parse_response 0x8f = do
     return . UpdateSectorEnts node . IntMap.fromList $
         map (\(eid, e) -> (fromIntegral eid, e)) entities
 
+parse_response 0xaa = do
+    entid <- getWord32be
+    departtype <- getWord8
+    EntityDepart entid <$> case departtype of
+        0x00 -> return Silent
+        0x01 -> return Destroyed
+        0x02 -> fmap Moved $ getWord8 >>= getdir
+        0x03 -> return EarthJump
+        0x04 -> return CorpJump
+        0x05 -> return RiftJump
+        0x06 -> return Logout
+        0x07 -> fmap Dragged $ getWord8 >>= getdir
+    where
+    getdir n
+        | 0 <= n && n <= 7 = return . toEnum $ fromIntegral n
+        | otherwise = fail $ "unknown direction type" ++ show n
+
+parse_response 0xab = do
+    (entid, ent) <- get_entity
+    return $ EntityArrival entid ent
+
 -- parse_response 0x9e _ = 
 parse_response 0xad = do
     attacker <- getWord32be
@@ -174,11 +215,17 @@ parse_response 0xad = do
     hit <- getWord8
     return $ AttackEvent attacker target damage (hit /= 0x00)
 
+parse_response 0x9d = SetShipResources <$> entid <*> get_ship_resources
+    where entid = getWord32be
+
 parse_response unknown_code =
     Unknown unknown_code <$> (remaining >>= getByteString)
 
 parse_tib_string :: Get ByteString
 parse_tib_string = getWord8 >>= getByteString . fromIntegral
+
+encode_tib_string s = Builder.word8 len `mappend` Builder.stringUtf8 s
+    where len = fromIntegral $ length s
 
 tib_false, tib_true, gray_server :: Num a => a
 tib_false = 0x80
@@ -205,6 +252,36 @@ put_tib_request (NewAcc iv acc) = as_tib_packet 0xbd . build_strict $ mconcat [
 
 put_tib_request (Move dir) =
     as_tib_packet 0xc6 . BStr.singleton . fromIntegral $ fromEnum dir
+
+put_tib_request (ReqAttack entid) =
+    as_tib_packet 0xcc . build_strict $ Builder.word32BE entid
+
+put_tib_request (ReqFollow entid) =
+    as_tib_packet 0xcb . build_strict $ Builder.word32BE entid
+
+put_tib_request (ReqResourceTransfer target (orgs, gas, mets, rads, dm)) =
+    as_tib_packet 0x10 . build_strict $ mconcat [
+              Builder.word8 orgs
+            , Builder.word8 gas
+            , Builder.word8 mets
+            , Builder.word8 rads
+            , Builder.word8 dm
+            , Builder.word32BE target
+        ]
+
+put_tib_request (ReqChat msg pmsender pmreceiver ty) =
+    as_tib_packet 0xbe . build_strict $ mconcat [
+              encode_tib_string msg
+            , encode_tib_string pmsender
+            , encode_tib_string pmreceiver
+            , Builder.word8 . fromIntegral $ fromEnum ty
+        ]
+
+put_tib_request (ReqDisconnect defend) =
+    as_tib_packet 0x82 . BStr.singleton $ put_tib_bool defend
+
+put_tib_request (ReqAuctions itemcls rarity) =
+    as_tib_packet 0x2c $ BStr.pack [itemcls, fromIntegral $ fromEnum rarity]
 
 put_tib_request Ping = as_tib_packet 0x86 ""
 

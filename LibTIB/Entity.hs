@@ -217,3 +217,7 @@ get_tib_bool = label "tib bool" $ getWord8 >>= \c -> case c of
     0x80 -> return False
     0x7f -> return True
     n -> fail $ "i expected a tib bool that's either 0x80 or 0x7f; got " ++ show n
+
+put_tib_bool :: Bool -> Word8
+put_tib_bool False = 0x80
+put_tib_bool True = 0x7f
