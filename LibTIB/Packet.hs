@@ -15,8 +15,8 @@ instance Serialize t => Serialize (TibPacket t) where
 
     get = do
         len <- getWord16be  -- packet length sans first two
-        command <- getWord8
-        g <- getByteString . fromIntegral $ len - 1
+        g <- getByteString $ fromIntegral len
         -- ^ slurp entire packet length to ensure parsing resumes on a packet
-        -- boundary, even upon failure
+        -- boundary, even upon failure. also, leave in the command code byte
+        -- for event deserializer to dispatch on.
         either fail return $ runGet (parse_response command) g
