@@ -1,6 +1,7 @@
 module LibTIB.Event where
 
 import Data.Serialize
+import LibTIB.Common
 
 data TibEvent
     = Challenge ByteString Word8  -- ^ iv and version byte
