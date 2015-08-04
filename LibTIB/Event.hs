@@ -15,5 +15,3 @@ data TibEvent
     | Departed EntID DepartType
     | Unknown Word8 ByteString
     deriving Show
-
-newtype TibPacket t = TibEvent t deriving Show
