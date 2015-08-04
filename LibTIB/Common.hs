@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 import qualified Data.ByteString.Char8 as Char8
-import Data.Serialize (putWord8, getWord8, getByteString, Serialize(..))
+import Data.Serialize (putWord8, getWord8, getByteString, Serialize(..), Get)
 import Data.Word (Word8, Word32)
 
 newtype EntID = EntID Word32 deriving (Show, Eq)
@@ -30,7 +30,7 @@ instance Serialize ChatType where
         0x80 -> NullChatType
         n -> toEnum $ fromIntegral n
 
-newtype TibPrim p = TibPrim p
+newtype TibPrim p = TibPrim { unprim :: p }
 
 instance Serialize (TibPrim String) where
     put (TibPrim s)
@@ -47,3 +47,9 @@ instance Serialize (TibPrim Bool) where
         0x80 -> return $ TibPrim False
         0x7f -> return $ TibPrim True
         n -> fail $ "unexpected tib bool " ++ show n
+
+getstr :: Get String
+getstr = fmap unprim get
+
+getbool :: Get Bool
+getbool = fmap unprim get
