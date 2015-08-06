@@ -7,9 +7,9 @@ import qualified Data.ByteString.Char8 as Char8
 import qualified RadixTrie as R
 import qualified Text.Parsec as P
 
-import Pwned hiding (main)  -- , Direction(..), doctek, tib, get_tib_response, TibResponse(..))
+import Pwned  -- , Direction(..), doctek, tib, get_tib_response, TibResponse(..))
 import CreateAccount (tor_connect)
-import XXD (xxd)
+import XXD (xxd, as_hex)
 
 import Data.ByteString (ByteString)
 import Network.Socket
@@ -19,7 +19,7 @@ import Network.Socket
     , SocketType(Stream)
     , Socket
     )
-import Data.Serialize (runGet, runGetPartial)
+import Data.Serialize (runGet, runGetPartial, Result(..))
 import Data.Char (isSpace)
 import Text.Parsec.ByteString (Parser)
 import Network.Socket.ByteString (recv, send)
@@ -113,6 +113,36 @@ main = withSocketsDo . withFile "./clive.in" ReadMode $ \h -> do
 
         Right unknown-> do
             putStrLn $ "Unknown response from server: " ++ show unknown
+
+ping_thread :: Socket -> IO ()
+ping_thread sock = do
+    send sock $ put_tib_request Ping
+    threadDelay $ 15 Sec
+    -- TODO: do something about the inevitable server response
+    ping_thread sock
+
+recvloop :: Socket -> (ByteString -> Result TibResponse) -> IO ()
+recvloop sock f = do
+    bytes <- recv sock 1024
+    if bytes == ""
+        then putStrLn "Disconnected by peer."
+        else do
+            newf <- consume_with f bytes
+            recvloop sock newf
+
+consume_with f bytes = do
+    case f bytes of
+        Partial f -> return f
+        Fail err remaining -> do
+            putStrLn $ "parse error on " ++ xxd 16 4 bytes
+            putStrLn $ "error was: " ++ err
+            consume_with (runGetPartial get_tib_response) remaining
+        Done (Unknown cmd hex) remaining -> do
+            putStrLn $ "Unknown command " ++ as_hex cmd ++ "\n" ++ xxd 16 4 hex
+            consume_with (runGetPartial get_tib_response) remaining
+        Done response remaining -> do
+            putStrLn $ "Received " ++ show response ++ "\n"
+            consume_with (runGetPartial get_tib_response) remaining
 
 eof_error e = if isEOFError e then Just () else Nothing
 

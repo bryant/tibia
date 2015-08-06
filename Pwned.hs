@@ -13,10 +13,8 @@ import Data.Serialize
     , getWord32be
     , ensure
     , getByteString
-    , runGetPartial
     , runGet
     , remaining
-    , Result(..)
     )
 import Control.Applicative ((<$>), (<*>))
 import Crypto.Cipher.AES (initAES, encryptCBC, decryptCBC)
@@ -38,7 +36,6 @@ import Network.Socket.ByteString (recv, send)
 import Network.BSD (getProtocolNumber, getHostByName, hostAddress)
 
 import Control.Concurrent (threadDelay, forkIO)
-import XXD (xxd, as_hex)
 import LibTIB.Entity
 
 data Account
@@ -355,6 +352,7 @@ padded bs = bs `BStr.append` padding
 
 tib = "66.119.27.227"
 
+{-
 main = withSocketsDo $ do
     sock <- socket AF_INET Stream =<< getProtocolNumber "tcp"
     connect sock =<< SockAddrInet 32040 . hostAddress <$> getHostByName tib
@@ -372,33 +370,4 @@ main = withSocketsDo $ do
 
         Right unknown-> do
             putStrLn $ "Unknown response from server: " ++ show unknown
-
-ping_thread :: Socket -> IO ()
-ping_thread sock = do
-    send sock $ put_tib_request Ping
-    threadDelay $ 15 Sec
-    -- TODO: do something about the inevitable server response
-    ping_thread sock
-
-recvloop :: Socket -> (ByteString -> Result TibResponse) -> IO ()
-recvloop sock f = do
-    bytes <- recv sock 1024
-    if bytes == ""
-        then putStrLn "Disconnected by peer."
-        else do
-            newf <- consume_with f bytes
-            recvloop sock newf
-
-consume_with f bytes = do
-    case f bytes of
-        Partial f -> return f
-        Fail err remaining -> do
-            putStrLn $ "parse error on " ++ xxd 16 4 bytes
-            putStrLn $ "error was: " ++ err
-            consume_with (runGetPartial get_tib_response) remaining
-        Done (Unknown cmd hex) remaining -> do
-            putStrLn $ "Unknown command " ++ as_hex cmd ++ "\n" ++ xxd 16 4 hex
-            consume_with (runGetPartial get_tib_response) remaining
-        Done response remaining -> do
-            putStrLn $ "Received " ++ show response ++ "\n"
-            consume_with (runGetPartial get_tib_response) remaining
+-}
