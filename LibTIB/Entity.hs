@@ -221,3 +221,7 @@ get_tib_bool = label "tib bool" $ getWord8 >>= \c -> case c of
 put_tib_bool :: Bool -> Word8
 put_tib_bool False = 0x80
 put_tib_bool True = 0x7f
+
+is_npc :: Entity -> Bool
+is_npc Npc{} = True
+is_npc _ = False
