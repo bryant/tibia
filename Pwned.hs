@@ -54,6 +54,7 @@ data Account
 data TibResponse
     = Challenge ByteString Word8  -- ^ iv and version byte
     | Alive
+    | Notice NoticeType
     | ChatEvent ByteString ByteString ByteString ChatType
     | UpdateSectorEnts Node (IntMap.IntMap Entity)
     | AttackEvent Word32 Word32 Word16 Bool
@@ -61,6 +62,18 @@ data TibResponse
     | EntityArrival Word32 Entity
     | EntityDepart Word32 DepartType
     | Unknown Word8 ByteString
+    deriving Show
+
+data NoticeType
+    = NoteNone  -- = int32(0x00)
+    | NoteLoginInvalid  -- = int32(0x01)
+    | NoteNameUnavailable  -- = int32(0x02)
+    | NotePlayerNotFound  -- = int32(0x03)
+    | NoteExploreBonus  -- = int32(0x06)
+    | NoteRequestFailed  -- = int32(0x08)
+    | NoteTradeFailCancel  -- = int32(0x0a)
+    | NoteBanned  -- = int32(0x0c)
+    | NoteAccountCreateSuccess  -- = int32(0x0d)
     deriving Show
 
 data ChatType
@@ -174,6 +187,20 @@ parse_response 0xbe =
     where
     chat_type 0x80 = NullChatType
     chat_type n = toEnum $ fromIntegral n
+
+parse_response 0x88 = Notice <$> (getWord8 >>= ntype)
+    where
+    ntype n = case n of
+        0x00 -> return NoteNone  -- = int32(0x00)
+        0x01 -> return NoteLoginInvalid  -- = int32(0x01)
+        0x02 -> return NoteNameUnavailable  -- = int32(0x02)
+        0x03 -> return NotePlayerNotFound  -- = int32(0x03)
+        0x06 -> return NoteExploreBonus  -- = int32(0x06)
+        0x08 -> return NoteRequestFailed  -- = int32(0x08)
+        0x0a -> return NoteTradeFailCancel  -- = int32(0x0a)
+        0x0c -> return NoteBanned  -- = int32(0x0c)
+        0x0d -> return NoteAccountCreateSuccess  -- = int32(0x0d)
+        n -> fail $ "unknown notice type " ++ show n
 
 parse_response 0x8f = do
     -- UpdateCurrentSector
