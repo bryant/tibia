@@ -140,8 +140,8 @@ consume_with f bytes = do
         Done (Unknown cmd hex) remaining -> do
             putStrLn $ "Unknown command " ++ as_hex cmd ++ "\n" ++ xxd 16 4 hex
             consume_with (runGetPartial get_tib_response) remaining
-        Done response remaining -> do
-            putStrLn $ "Received " ++ show response ++ "\n"
+        Done event remaining -> do
+            putStrLn $ "Received " ++ show event ++ "\n"
             consume_with (runGetPartial get_tib_response) remaining
 
 eof_error e = if isEOFError e then Just () else Nothing
