@@ -3,11 +3,13 @@
 module Clive where
 
 import qualified Data.ByteString as BStr
+import qualified Data.ByteString.Char8 as Char8
 import qualified RadixTrie as R
 import qualified Text.Parsec as P
 
 import Pwned hiding (main)  -- , Direction(..), doctek, tib, get_tib_response, TibResponse(..))
 import CreateAccount (tor_connect)
+import XXD (xxd)
 
 import Data.ByteString (ByteString)
 import Network.Socket
@@ -24,12 +26,13 @@ import Network.Socket.ByteString (recv, send)
 import Network.BSD (getProtocolNumber)
 import Control.Concurrent (threadDelay, forkIO)
 import Control.Monad.Trans (liftIO)
-import System.IO (withFile, IOMode(ReadMode))
+import System.IO (withFile, IOMode(ReadMode, WriteMode), hGetLine, hPutStr)
 import System.IO.Error (isEOFError)
 import Control.Exception (handleJust)
 import Control.Applicative ((<$>), (<*>), (<*))
 import Control.Monad (mzero, join, void)
 import Numeric (readHex, readDec)
+import System.Random (randomRIO)
 
 get_ip :: Socket -> IO ByteString
 get_ip sock = do
@@ -41,6 +44,45 @@ get_ip sock = do
             \User-Agent: curl/7.35.0\r\n\
             \Host: localhost:8000\r\n\
             \Accept: */*\r\n\r\n"
+
+register_account :: Socket -> ByteString -> Account -> IO (Maybe ByteString)
+register_account sock iv acc = do
+    putStrLn $ "Registering account: " ++ show acc
+    send sock . put_tib_request $ NewAcc iv acc
+    reply <- recv sock 1024
+    case runGet get_tib_response reply of
+        Right (Notice NoteAccountCreateSuccess) -> do
+            putStrLn "Success!"
+            return Nothing
+        Right n@Notice{} -> do
+            putStrLn $ "Uh oh, received notice: " ++ show n
+            return $ Just reply
+        _ -> do
+            putStrLn "Unrecognized reply."
+            return $ Just reply
+
+rand_str :: ByteString -> Int -> IO ByteString
+rand_str alpha len = do
+    indices <- sequence . replicate len $ randomRIO (0, BStr.length alpha - 1)
+    return . BStr.pack $ map (BStr.index alpha) indices
+
+get_name :: IO ByteString
+get_name = do
+    pos <- withFile "./current" ReadMode $ fmap read . hGetLine
+    withFile "./current" WriteMode $ \h -> hPutStr h . show $ pos + 1
+    withFile "./usernames" ReadMode $ \h -> do
+        sequence_ . replicate pos $ BStr.hGetLine h
+        BStr.hGetLine h
+
+generate_account :: IO Account
+generate_account = do
+    user <- get_name
+    pass <- randomRIO (6, 12) >>= rand_str alpha_num
+    devid <- rand_str "0123456789abcdef" 32
+    devty <- randomRIO (4, 21) >>= rand_str alpha_num
+    let cli = "unity_1.3.2-AGP(86)"
+    return $ Account user pass devid devty cli
+    where alpha_num = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 main :: IO ()
 main = withSocketsDo . withFile "./clive.in" ReadMode $ \h -> do
@@ -56,12 +98,18 @@ main = withSocketsDo . withFile "./clive.in" ReadMode $ \h -> do
         Right (Challenge iv ver) -> do
             putStrLn $ "Server version: " ++ show ver
             putStrLn $ "IV received: " ++ show iv
-            putStrLn $ "Sending creds: " ++ show doctek
-            send sock . put_tib_request $ Auth iv doctek
 
-            forkIO $ ping_thread sock
-            forkIO $ cmd_loop sock h
-            recvloop sock $ runGetPartial get_tib_response
+            acc <- generate_account
+            err <- register_account sock iv acc
+            case err of
+                Just bytes -> putStrLn (xxd 16 4 bytes) >> mzero
+                Nothing -> do
+                    putStrLn "Logging in."
+                    send sock . put_tib_request $ Auth iv acc
+
+                    forkIO $ ping_thread sock
+                    forkIO $ cmd_loop sock h
+                    recvloop sock $ runGetPartial get_tib_response
 
         Right unknown-> do
             putStrLn $ "Unknown response from server: " ++ show unknown
