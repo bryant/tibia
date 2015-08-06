@@ -53,7 +53,7 @@ data TibResponse
     | Alive
     | Notice NoticeType
     | ChatEvent ByteString ByteString ByteString ChatType
-    | UpdateSectorEnts Node (IntMap.IntMap Entity)
+    | UpdateSectorEnts Node [(Word32, Entity)]
     | AttackEvent Word32 Word32 Word16 Bool
     | SetShipResources Word32 Resources
     | EntityArrival Word32 Entity
@@ -207,8 +207,7 @@ parse_response 0x8f = do
     entity_count <- fromIntegral <$> getWord16be
     entities <- sequence $ replicate entity_count get_entity
     let node = (if rift == 0 then NonRift else Rift) xpos ypos
-    return . UpdateSectorEnts node . IntMap.fromList $
-        map (\(eid, e) -> (fromIntegral eid, e)) entities
+    return $ UpdateSectorEnts node entities
 
 parse_response 0xaa = do
     entid <- getWord32be
