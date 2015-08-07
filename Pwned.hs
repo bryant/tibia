@@ -58,6 +58,7 @@ data TibResponse
     | SetShipResources Word32 Resources
     | EntityArrival Word32 Entity
     | EntityDepart Word32 DepartType
+    | NameToID ByteString Word32
     | Unknown Word8 ByteString
     deriving Show
 
@@ -240,6 +241,13 @@ parse_response 0xad = do
 
 parse_response 0x9d = SetShipResources <$> entid <*> get_ship_resources
     where entid = getWord32be
+
+parse_response 0x8a = do
+    name <- parse_tib_string
+    pid <- getWord32be
+    hardcore <- get_tib_bool
+    getByteString 8  -- ship skin and reserved bytes
+    return $ NameToID name pid
 
 parse_response unknown_code =
     Unknown unknown_code <$> (remaining >>= getByteString)
