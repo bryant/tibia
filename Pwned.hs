@@ -98,7 +98,7 @@ data DepartType
     | RiftJump  -- = int32(0x00000005)
     | Logout  -- = int32(0x00000006)
     | Dragged Direction  -- = int32(0x00000007)
-    deriving Show
+    deriving (Show, Eq)
 
 data Node = Rift Word8 Word8 | NonRift Word8 Word8 deriving Show
 
@@ -118,7 +118,7 @@ data TibRequest
 data Direction
     = Northwest | North | Northeast | East | Southeast | South | Southwest
     | West
-    deriving (Show, Enum)
+    deriving (Show, Enum, Eq)
 
 data TimeUnit = Sec | Msec | Usec deriving Show
 
