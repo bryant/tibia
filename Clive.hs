@@ -180,7 +180,7 @@ get_event sock var = do
         Done event remaining -> do
             case event of
                 Unknown code bs -> do
-                    putStrLn $ "Unknown event " ++ show code
+                    putStrLn $ "Unknown event " ++ show (as_hex code)
                     putStrLn $ "<<<<<<\n" ++ xxd 16 4 bs
                 e -> putStrLn $ "Received event: " ++ show e
             writeIORef var $ runGetPartial get_tib_response remaining
