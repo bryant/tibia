@@ -29,8 +29,10 @@ import Network.Socket.ByteString (recv, send)
 import Network.BSD (getProtocolNumber)
 import Control.Concurrent (threadDelay, forkIO)
 import Control.Monad.Trans (liftIO)
-import System.IO (withFile, IOMode(ReadMode, WriteMode), hGetLine, hPutStr)
+import System.IO (withFile, openFile, IOMode(ReadMode, WriteMode), hGetLine,
+                  hPutStr, Handle)
 import System.IO.Error (isEOFError)
+import System.Posix.Files (createNamedPipe)
 import Control.Exception (handleJust)
 import Control.Applicative ((<$>), (<*>), (<*))
 import Control.Monad (mzero, join, void, forever, when)
@@ -115,8 +117,15 @@ generate_account = do
     return $ Account user pass devid devty cli
     where alpha_num = "abcdefghijklmnopqrstuvwxyz0123456789"
 
+create_fifo :: Account -> IO Handle
+create_fifo (Account {acc_user=u}) = do
+    let fifo = "./" ++ Char8.unpack u ++ ".fifo"
+    putStrLn $ "Creating " ++ fifo
+    createNamedPipe fifo 0o640
+    openFile fifo ReadMode
+
 main :: IO ()
-main = withSocketsDo . withFile "./clive.in" ReadMode $ \h -> do
+main = withSocketsDo $ do
     BStr.putStrLn =<< get_ip =<< socket AF_INET Stream
                              =<< getProtocolNumber "tcp"
 
@@ -131,6 +140,7 @@ main = withSocketsDo . withFile "./clive.in" ReadMode $ \h -> do
             putStrLn $ "IV received: " ++ show iv
 
             acc <- generate_account
+            h <- create_fifo acc
             err <- register_account sock iv acc
             case err of
                 Just bytes -> putStrLn (xxd 16 4 bytes) >> mzero
