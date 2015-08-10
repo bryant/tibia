@@ -24,7 +24,7 @@ data ChatType
     deriving (Show, Enum)
 
 instance Serialize ChatType where
-    put = undefined
+    put = putWord8 . fromIntegral . fromEnum
 
     get = getWord8 >>= \n -> return $ case n of
         0x80 -> NullChatType
