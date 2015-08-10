@@ -1,8 +1,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 
+module LibTIB.Common where
+
 import qualified Data.ByteString.Char8 as Char8
 import Data.Serialize (putWord8, getWord8, getByteString, Serialize(..), Get)
 import Data.Word (Word8, Word32)
+import Control.Applicative ((<$>), (<*>))
 
 newtype EntID = EntID Word32 deriving (Show, Eq)
 
@@ -22,6 +25,43 @@ data ChatType
     | Universe
     | NullChatType  -- 0xffffff80
     deriving (Show, Enum)
+
+data DepartType
+    = Silent  -- 0x00
+    | Destroyed  -- 0x01
+    | Moved Direction  -- 0x02
+    | EarthJump  -- 0x03
+    | CorpJump  -- 0x04
+    | RiftJump  -- 0x05
+    | Logout  -- 0x06
+    | Dragged Direction  -- 0x07
+    deriving Show
+
+data Direction
+    = Northwest | North | Northeast | East | Southeast | South | Southwest
+    | West
+    deriving (Show, Enum)
+
+instance Serialize EntID where
+    put (EntID eid) = put eid
+    get = EntID <$> get
+
+instance Serialize DepartType where
+    put = undefined
+
+    get = getWord8 >>= \n -> case n of
+        0x00 -> return Silent
+        0x01 -> return Destroyed
+        0x02 -> Moved <$> get
+        0x03 -> return EarthJump
+        0x04 -> return CorpJump
+        0x05 -> return RiftJump
+        0x06 -> return Logout
+        0x07 -> Dragged <$> get
+
+instance Serialize Direction where
+    put = putWord8 . fromIntegral . fromEnum
+    get = toEnum . fromIntegral <$> getWord8
 
 instance Serialize ChatType where
     put = putWord8 . fromIntegral . fromEnum
