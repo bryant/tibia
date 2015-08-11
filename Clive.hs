@@ -140,7 +140,6 @@ main = withSocketsDo $ do
             putStrLn $ "IV received: " ++ show iv
 
             acc <- generate_account
-            h <- create_fifo acc
             err <- register_account sock iv acc
             case err of
                 Just bytes -> putStrLn (xxd 16 4 bytes) >> mzero
@@ -153,6 +152,7 @@ main = withSocketsDo $ do
 
                     clive <- newIORef $ CliveState me False Nothing Nothing []
                                                    (0, 0, 0, 0, 0)
+                    h <- create_fifo acc
                     forkIO $ ping_thread sock
                     forkIO $ cmd_loop sock h clive
                     forever $ run_clive sock var clive
