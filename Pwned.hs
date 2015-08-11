@@ -103,8 +103,8 @@ data DepartType
 data Node = Rift Word8 Word8 | NonRift Word8 Word8 deriving Show
 
 data TibRequest
-    = Auth ByteString Account  -- ^ iv, account params
-    | NewAcc ByteString Account
+    = Auth ByteString Account Server  -- ^ iv, account params
+    | NewAcc ByteString Account Server
     | Move Direction
     | ReqAttack Word32  -- ^ entity id, 0x8000_0000 to disengage attack
     | ReqFollow Word32
@@ -114,6 +114,9 @@ data TibRequest
     | ReqAuctions Word8 Rarity
     | Ping
     deriving Show
+
+data Server = RedServer | BlueServer | GreenServer | GrayServer
+    deriving (Show, Enum)
 
 data Direction
     = Northwest | North | Northeast | East | Southeast | South | Southwest
@@ -258,24 +261,23 @@ parse_tib_string = getWord8 >>= getByteString . fromIntegral
 encode_tib_string s = Builder.word8 len `mappend` Builder.stringUtf8 s
     where len = fromIntegral $ length s
 
-tib_false, tib_true, gray_server :: Num a => a
+tib_false, tib_true :: Num a => a
 tib_false = 0x80
 tib_true = 0x7f
-gray_server = 0x03  -- gray server id: 0x03
 
 put_tib_request :: TibRequest -> ByteString
-put_tib_request (Auth iv acc) = as_tib_packet 0xbd . build_strict $ mconcat [
+put_tib_request (Auth iv acc sv) = as_tib_packet 0xbd . build_strict $ mconcat [
           build_auth iv acc
         , Builder.word8 tib_false  -- new account: false
         , Builder.word8 tib_false  -- hardcore: false
-        , Builder.word8 gray_server
+        , Builder.word8 . fromIntegral $ fromEnum sv
     ]
 
-put_tib_request (NewAcc iv acc) = as_tib_packet 0xbd . build_strict $ mconcat [
+put_tib_request (NewAcc iv acc sv) = as_tib_packet 0xbd . build_strict $ mconcat [
           build_auth iv acc
         , Builder.word8 tib_true -- new account: true
         , Builder.word8 tib_false
-        , Builder.word8 gray_server
+        , Builder.word8 . fromIntegral $ fromEnum sv
         , Builder.word16BE 0x00  -- face as u16
         , Builder.word16BE 0x00  -- attributes
         , Builder.word16BE 0x00  -- hair

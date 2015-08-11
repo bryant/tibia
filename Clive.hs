@@ -81,7 +81,7 @@ send_tib sock req = void $ do
 register_account :: Socket -> ByteString -> Account -> IO (Maybe ByteString)
 register_account sock iv acc = do
     putStrLn $ "Registering account: " ++ show acc
-    send_tib sock $ NewAcc iv acc
+    send_tib sock $ NewAcc iv acc GrayServer
     reply <- recv sock 1024
     case runGet get_tib_response reply of
         Right (Notice NoteAccountCreateSuccess) -> do
@@ -145,7 +145,7 @@ main = withSocketsDo $ do
                 Just bytes -> putStrLn (xxd 16 4 bytes) >> mzero
                 Nothing -> do
                     putStrLn "Logging in."
-                    send_tib sock $ Auth iv acc
+                    send_tib sock $ Auth iv acc GrayServer
 
                     var <- newIORef . Partial $ runGetPartial get_tib_response
                     me <- get_clives_id acc sock var

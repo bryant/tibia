@@ -37,7 +37,7 @@ main = withSocketsDo $ do
             putStrLn $ "Server version: " ++ show ver
             putStrLn $ "IV received: " ++ show iv
             putStrLn $ "Creating new account: " ++ show doctek
-            send sock . put_tib_request $ NewAcc iv doctek
+            send sock . put_tib_request $ NewAcc iv doctek GrayServer
             return ()
 
         Right unknown-> do
