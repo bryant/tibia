@@ -4,8 +4,7 @@ module LibTIB.Test where
 
 import qualified Data.ByteString as BStr
 import Data.Serialize (encode, decode)
-import LibTIB.Account (Account(..))
-import LibTIB.Common (TibPacket(..), Server(ServGray))
+import LibTIB.Common (TibPacket(..), Server(ServGray), Account(..))
 import XXD (xxd)
 import LibTIB.Request (TibRequest(Auth))
 import LibTIB.Event (TibEvent(Challenge))

@@ -3,6 +3,7 @@
 module LibTIB.Common where
 
 import qualified Data.ByteString.Char8 as Char8
+import Data.ByteString (ByteString)
 import Data.Serialize
     ( putWord8
     , putWord16be
@@ -19,6 +20,16 @@ import Data.Serialize
     )
 import Data.Word (Word8, Word32)
 import Control.Applicative ((<$>), (<*>))
+
+data Account
+    = Account
+    { acc_user :: ByteString
+    , acc_pass :: ByteString
+    , acc_device_id :: ByteString
+    , acc_device_type :: ByteString
+    , acc_client_version :: ByteString
+    }
+    deriving Show
 
 newtype EntID = EntID Word32 deriving (Show, Eq)
 

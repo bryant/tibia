@@ -22,8 +22,8 @@ import LibTIB.Common
     , Direction
     , putbool
     , putstr
+    , Account(..)
     )
-import LibTIB.Account (Account(..))
 import LibTIB.Constants (tib_key)
 
 data TibRequest
