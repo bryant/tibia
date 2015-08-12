@@ -3,10 +3,10 @@
 module LibTIB.Test where
 
 import qualified Data.ByteString as BStr
-import Data.Serialize
+import Data.Serialize (encode, decode)
 import LibTIB.Account (Account(..))
-import LibTIB.Common
-import XXD
+import LibTIB.Common (TibPacket(..), Server(ServGray))
+import XXD (xxd)
 import LibTIB.Request (TibRequest(Auth))
 import LibTIB.Event (TibEvent(Challenge))
 
