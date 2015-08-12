@@ -45,6 +45,21 @@ data Direction
 data Server = ServRed | ServBlue | ServGreen | ServGray
     deriving (Show, Enum)
 
+data ItemType
+    = TyNull  -- ^ never happens, used to properly offset Enum values
+    | TyWeapon
+    | TyArmor
+    | TyStorage
+    | TyHarvester
+    | TyEngine
+    | TyComputer
+    | TySpecial
+    deriving (Show, Enum)
+
+instance Serialize ItemType where
+    put = putWord8 . fromIntegral . fromEnum
+    get = toEnum . fromIntegral <$> getWord8
+
 instance Serialize EntID where
     put (EntID eid) = put eid
     get = EntID <$> get
