@@ -3,8 +3,20 @@
 module LibTIB.Common where
 
 import qualified Data.ByteString.Char8 as Char8
-import Data.Serialize (putWord8, putWord32be, getWord8, getByteString,
-                       Serialize(..), Get, Put)
+import Data.Serialize
+    ( putWord8
+    , putWord16be
+    , putWord32be
+    , putByteString
+    , getWord8
+    , getWord16be
+    , getByteString
+    , Serialize(..)
+    , Get
+    , Put
+    , isolate
+    , encode
+    )
 import Data.Word (Word8, Word32)
 import Control.Applicative ((<$>), (<*>))
 
@@ -67,6 +79,20 @@ data Rarity
     | Precursor  -- 0x06
     | Ultimate  -- 0x07
     deriving (Show, Enum)
+
+newtype TibPacket t = TibPacket t deriving Show
+
+instance Serialize t => Serialize (TibPacket t) where
+    put (TibPacket req) = do
+        let pktdat = encode req
+        putWord16be . fromIntegral $ Char8.length pktdat
+        putByteString pktdat
+
+    get = do
+        len <- getWord16be  -- packet length sans first two
+        TibPacket `fmap` isolate (fromIntegral len) get
+        -- ^ ensures that entire packet is consumed to keep parsing aligned with
+        -- packet boundaries
 
 instance Serialize Rarity where
     put = putWord8 . fromIntegral . fromEnum

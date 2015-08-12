@@ -5,7 +5,6 @@ module LibTIB.Test where
 import qualified Data.ByteString as BStr
 import Data.Serialize
 import LibTIB.Account (Account(..))
-import LibTIB.Packet (TibPacket(..))
 import LibTIB.Common
 import XXD
 import LibTIB.Request (TibRequest(Auth))
