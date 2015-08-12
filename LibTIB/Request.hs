@@ -23,8 +23,8 @@ import LibTIB.Common
     , putbool
     , putstr
     , Account(..)
+    , tib_key
     )
-import LibTIB.Constants (tib_key)
 
 data TibRequest
     = Auth ByteString Account Server

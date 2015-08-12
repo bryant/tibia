@@ -170,3 +170,9 @@ putstr = put . TibPrim
 
 putbool :: Bool -> Put
 putbool = put . TibPrim
+
+tib_key :: ByteString
+tib_key = Char8.pack
+    "\x02\x27\x75\xfe\xfe\x08\xbd\x35\xf7\x92\x58\x5d\xd6\xc1\x18\xd9"
+
+server_ip = "66.119.27.227"
