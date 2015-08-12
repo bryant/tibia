@@ -12,7 +12,7 @@ import Data.ByteString (ByteString)
 import Control.Applicative ((<$>), (<*>))
 import Data.Word (Word8, Word16)
 import LibTIB.Entity (Entity, get_entity, get_ship_resources)
-import LibTIB.Common
+import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr)
 
 data TibEvent
     = Challenge ByteString Word8  -- ^ iv and version byte
