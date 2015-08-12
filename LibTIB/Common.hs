@@ -42,6 +42,9 @@ data Direction
     | West
     deriving (Show, Enum)
 
+data Server = ServRed | ServBlue | ServGreen | ServGray
+    deriving (Show, Enum)
+
 instance Serialize EntID where
     put (EntID eid) = put eid
     get = EntID <$> get
