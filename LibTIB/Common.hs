@@ -3,7 +3,8 @@
 module LibTIB.Common where
 
 import qualified Data.ByteString.Char8 as Char8
-import Data.Serialize (putWord8, getWord8, getByteString, Serialize(..), Get)
+import Data.Serialize (putWord8, putWord32be, getWord8, getByteString,
+                       Serialize(..), Get, Put)
 import Data.Word (Word8, Word32)
 import Control.Applicative ((<$>), (<*>))
 
@@ -76,7 +77,7 @@ instance Serialize ItemType where
     get = toEnum . fromIntegral <$> getWord8
 
 instance Serialize EntID where
-    put (EntID eid) = put eid
+    put (EntID eid) = putWord32be eid
     get = EntID <$> get
 
 instance Serialize DepartType where
@@ -126,3 +127,9 @@ getstr = fmap unprim get
 
 getbool :: Get Bool
 getbool = fmap unprim get
+
+putstr :: String -> Put
+putstr = put . TibPrim
+
+putbool :: Bool -> Put
+putbool = put . TibPrim
