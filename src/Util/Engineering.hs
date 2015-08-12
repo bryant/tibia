@@ -1,4 +1,4 @@
-module LibTIB.Engineering where
+module Util.Engineering where
 
 import LibTIB.Common (ItemType(..), Rarity(..))
 
