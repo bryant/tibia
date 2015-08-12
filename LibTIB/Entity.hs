@@ -15,7 +15,7 @@ import Data.ByteString (ByteString)
 import Control.Applicative ((<$>), (<*>))
 
 import LibTIB.ItemClasses (WeaponClass, ArmorClass, weap_class, armor_class)
-import LibTIB.Common (getbool, EntID)
+import LibTIB.Common (getbool, EntID, Rarity)
 
 type Hull = Word16
 
@@ -82,22 +82,9 @@ data Item
     | UnknownItem Word8
     deriving Show
 
-data Rarity
-    = Null  -- = int32(0xffffff80), should never happen
-    | Common  -- = int32(0x00000001)
-    | Uncommon  -- = int32(0x00000002)
-    | Rare  -- = int32(0x00000003)
-    | UltraRare  -- = int32(0x00000004)
-    | Legendary  -- = int32(0x00000005)
-    | Precursor  -- = int32(0x00000006)
-    | Ultimate  -- = int32(0x00000007)
-    deriving (Show, Enum)
-
 get_player_ship_class :: Get PlayerShipClass
 get_player_ship_class = label "player ship class" $
     toEnum . fromIntegral <$> getWord8
-
-get_rarity = label "rarity" $ toEnum . fromIntegral <$> getWord8
 
 get_ship_resources = do
     darkmatter <- getWord8
@@ -109,12 +96,12 @@ get_ship_resources = do
 
 get_item_stats :: Get (Rarity, Word8, Bool, Bool, Word8)
 get_item_stats = do
-    rarity <- get_rarity
+    rarity <- get
     dura <- getWord8
     nodrop <- getbool
     boe <- if nodrop then return False else getbool
     cls <- getWord8
-    return (toEnum $ fromIntegral rarity, dura, nodrop, boe, cls)
+    return (rarity, dura, nodrop, boe, cls)
 
 get_weapon = do
     (r, d, nd, boe, cls) <- get_item_stats

@@ -56,6 +56,21 @@ data ItemType
     | TySpecial
     deriving (Show, Enum)
 
+data Rarity
+    = RarityNull  -- 0xffffff80, should never happen
+    | Common  -- 0x01
+    | Uncommon  -- 0x02
+    | Rare  -- 0x03
+    | UltraRare  -- 0x04
+    | Legendary  -- 0x05
+    | Precursor  -- 0x06
+    | Ultimate  -- 0x07
+    deriving (Show, Enum)
+
+instance Serialize Rarity where
+    put = putWord8 . fromIntegral . fromEnum
+    get = toEnum . fromIntegral <$> getWord8
+
 instance Serialize ItemType where
     put = putWord8 . fromIntegral . fromEnum
     get = toEnum . fromIntegral <$> getWord8
