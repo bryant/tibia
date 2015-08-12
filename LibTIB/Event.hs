@@ -49,7 +49,10 @@ event_code =
     , (0xad, attack)
     ]
 
-challenge = Challenge <$> getByteString 16 <*> getWord8
+expect8 byte = getWord8 >>= \b -> if b == byte then return ()
+        else fail $ "expected " ++ show byte ++ "; got " ++ show b
+
+challenge = Challenge <$> (expect8 0x10 >> getByteString 16) <*> getWord8
 
 ping = return Alive
 

@@ -93,6 +93,6 @@ aes128_cbc_pkcs7_dec key = decryptCBC $ initAES key
 
 padded bs = bs `BStr.append` padding
     where
-    nearest16 = 16 * quot (BStr.length bs + 15) 16  -- fast integer ceil
+    nearest16 = 16 * quot (BStr.length bs + 16) 16  -- fast integer ceil + 1
     padlen = nearest16 - BStr.length bs
     padding = BStr.replicate padlen $ fromIntegral padlen
