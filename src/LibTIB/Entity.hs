@@ -1,13 +1,21 @@
 module LibTIB.Entity where
 
-import Data.Serialize (getWord8, getWord16be, getWord32be, getByteString, Get, label)
+import Data.Serialize
+    ( getWord8
+    , getWord16be
+    , getWord32be
+    , getByteString
+    , Get
+    , label
+    , remaining
+    , get
+    )
 import Data.Word (Word8, Word16, Word32)
 import Data.ByteString (ByteString)
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (mzero)
 
-import LibTIB.ItemClasses
-import XXD (xxd)
+import LibTIB.ItemClasses (WeaponClass, ArmorClass, weap_class, armor_class)
+import LibTIB.Common (getbool, EntID, Rarity)
 
 type Hull = Word16
 
@@ -28,6 +36,7 @@ data Entity
     | CargoResource ResourceType Word16  -- = int32(0x00000013)
     | CapturePoint  -- = int32(0x00000014)
     | EntityIDGAF ByteString
+    | EntityUnknown Word8 ByteString  -- ^ entity code, bytes
     deriving Show
 
 data PlayerShipClass
@@ -59,14 +68,7 @@ type XP = Word32
 
 data Player = Player PlayerID CorpID AllianceID
 
-type Resources = (Word8, Word8, Word8, Word8, Word8)
-
-data ResourceType
-    = Organic  -- = int32(0x00000000)
-    | Gas  -- = int32(0x00000001)
-    | Metal  -- = int32(0x00000002)
-    | Radioactive  -- = int32(0x00000003)
-    | Darkmatter  -- = int32(0x00000004)
+data ResourceType = Organic | Gas | Metal | Radioactive | Darkmatter
     deriving (Show, Enum)
 
 data Item
@@ -80,22 +82,9 @@ data Item
     | UnknownItem Word8
     deriving Show
 
-data Rarity
-    = Null  -- = int32(0xffffff80), should never happen
-    | Common  -- = int32(0x00000001)
-    | Uncommon  -- = int32(0x00000002)
-    | Rare  -- = int32(0x00000003)
-    | UltraRare  -- = int32(0x00000004)
-    | Legendary  -- = int32(0x00000005)
-    | Precursor  -- = int32(0x00000006)
-    | Ultimate  -- = int32(0x00000007)
-    deriving (Show, Enum)
-
 get_player_ship_class :: Get PlayerShipClass
 get_player_ship_class = label "player ship class" $
     toEnum . fromIntegral <$> getWord8
-
-get_rarity = label "rarity" $ toEnum . fromIntegral <$> getWord8
 
 get_ship_resources = do
     darkmatter <- getWord8
@@ -107,12 +96,12 @@ get_ship_resources = do
 
 get_item_stats :: Get (Rarity, Word8, Bool, Bool, Word8)
 get_item_stats = do
-    rarity <- get_rarity
+    rarity <- get
     dura <- getWord8
-    nodrop <- get_tib_bool
-    boe <- if nodrop then return False else get_tib_bool
+    nodrop <- getbool
+    boe <- if nodrop then return False else getbool
     cls <- getWord8
-    return (toEnum $ fromIntegral rarity, dura, nodrop, boe, cls)
+    return (rarity, dura, nodrop, boe, cls)
 
 get_weapon = do
     (r, d, nd, boe, cls) <- get_item_stats
@@ -167,7 +156,7 @@ get_player_ship = label "player ship update" $ do
     (hull, pid, _, _) <- get_combat_entity
     cls <- get_player_ship_class
     res <- get_ship_resources
-    pvpable <- get_tib_bool
+    pvpable <- getbool
     xp <- getWord32be
     [weap, armor, stor, harv, eng, comp, spec] <-
         sequence . zipWith label (words "weap armor storage harvester engine computer special") $ replicate 7 get_item
@@ -186,9 +175,10 @@ get_starport = label "starport" $ do
     inventory <- sequence $ replicate (fromIntegral inv_size) get_item
     return $ Starport inventory
 
+get_entity :: Get (EntID, Entity)
 get_entity = label "sector entity" $ do
     enttype <- getWord8
-    entid <- getWord32be
+    entid <- get
     ent <- case enttype of
         0x01 -> EntityIDGAF <$> getByteString 5   -- planet
         0x02 -> EntityIDGAF <$> getByteString 1  -- asteroid
@@ -206,21 +196,8 @@ get_entity = label "sector entity" $ do
         0x13 -> CargoResource <$> (toEnum . fromIntegral <$> getWord8)
                               <*> getWord16be
         0x14 -> EntityIDGAF <$> getByteString 1  -- capture point, what is it?
-        n -> do
-            surround <- getByteString 16
-            fail $ "what's entity type " ++ show n ++ " ? from "
-                            ++ xxd 16 4 surround
+        n -> EntityUnknown n <$> (remaining >>= getByteString)
     return (entid, ent)
-
-get_tib_bool :: Get Bool
-get_tib_bool = label "tib bool" $ getWord8 >>= \c -> case c of
-    0x80 -> return False
-    0x7f -> return True
-    n -> fail $ "i expected a tib bool that's either 0x80 or 0x7f; got " ++ show n
-
-put_tib_bool :: Bool -> Word8
-put_tib_bool False = 0x80
-put_tib_bool True = 0x7f
 
 is_npc :: Entity -> Bool
 is_npc Npc{} = True

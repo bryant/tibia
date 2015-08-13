@@ -1,4 +1,4 @@
-module XXD where
+module Util.XXD where
 
 import qualified Data.ByteString as BStr
 import Data.ByteString (ByteString)
