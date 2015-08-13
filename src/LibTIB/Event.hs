@@ -8,6 +8,7 @@ import Data.Serialize
     , getWord16be
     , getWord32be
     , decode
+    , Get
     )
 import Data.ByteString (ByteString)
 import Control.Applicative ((<$>), (<*>))
@@ -19,6 +20,7 @@ import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr,
 data TibEvent
     = Challenge ByteString Word8  -- ^ iv and version byte
     | Alive
+    | Notice NoticeType
     | Chat String String String ChatType
     -- ^ message, sender, possible private recipient
     | SectorEnts Node [(EntID, Entity)]
@@ -27,6 +29,18 @@ data TibEvent
     | Arrived EntID Entity
     | Departed EntID DepartType
     | Unknown Word8 ByteString
+    deriving Show
+
+data NoticeType
+    = NoteNone  -- = int32(0x00)
+    | NoteLoginInvalid  -- = int32(0x01)
+    | NoteNameUnavailable  -- = int32(0x02)
+    | NotePlayerNotFound  -- = int32(0x03)
+    | NoteExploreBonus  -- = int32(0x06)
+    | NoteRequestFailed  -- = int32(0x08)
+    | NoteTradeFailCancel  -- = int32(0x0a)
+    | NoteBanned  -- = int32(0x0c)
+    | NoteCreateSuccess  -- = int32(0x0d)
     deriving Show
 
 data Node = Rift Word8 Word8 | NonRift Word8 Word8 deriving Show
@@ -43,6 +57,7 @@ instance Serialize TibEvent where
 event_code =
     [ (0x84, challenge)
     , (0x86, ping)
+    , (0x88, notice)
     , (0x8f, sector_info)
     , (0x9d, set_ship_resources)
     , (0xbe, chat)
@@ -57,6 +72,21 @@ expect8 byte = getWord8 >>= \b -> if b == byte then return ()
 challenge = Challenge <$> (expect8 0x10 >> getByteString 16) <*> getWord8
 
 ping = return Alive
+
+notice = Notice <$> (getWord8 >>= ntype)
+    where
+    ntype n = case n of
+        0x00 -> return NoteNone  -- = int32(0x00)
+        0x01 -> return NoteLoginInvalid  -- = int32(0x01)
+        0x02 -> return NoteNameUnavailable  -- = int32(0x02)
+        0x03 -> return NotePlayerNotFound  -- = int32(0x03)
+        0x06 -> return NoteExploreBonus  -- = int32(0x06)
+        0x08 -> return NoteRequestFailed  -- = int32(0x08)
+        0x0a -> return NoteTradeFailCancel  -- = int32(0x0a)
+        0x0c -> return NoteBanned  -- = int32(0x0c)
+        0x0d -> return NoteCreateSuccess  -- = int32(0x0d)
+        n -> fail $ "unknown notice type " ++ show n
+
 
 chat = Chat <$> getstr <*> getstr <*> getstr <*> get
 
