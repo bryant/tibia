@@ -86,3 +86,6 @@ attack = do
 decode_event :: ByteString -> Either String TibEvent
 decode_event bs = case decode bs of
     { Left e -> Left e; Right (TibPacket rv) -> Right rv; }
+
+get_event :: Get TibEvent
+get_event = get >>= \(TibPacket ev) -> return ev
