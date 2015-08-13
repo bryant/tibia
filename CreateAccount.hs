@@ -2,42 +2,22 @@
 
 module CreateAccount where
 
-import Network.Socks5
-    ( socksConnectName
-    , socksConnectAddr
-    , SocksAddress(..)
-    , SocksHostAddress(SocksAddrDomainName)
-    , defaultSocksConf
-    , defaultSocksConfFromSockAddr
-    )
 import Data.Serialize (decode, encode)
-import Network.Socket
-    ( withSocketsDo
-    , socket
-    , Family(AF_INET)
-    , SocketType(Stream)
-    , connect
-    , SockAddr(SockAddrInet)
-    )
+import Network.Socket (withSocketsDo)
 import Network.Socket.ByteString (recv, send)
-import Network.BSD (getProtocolNumber, getHostByName, hostAddress)
 import Control.Applicative ((<$>))
 import Control.Monad (forever)
 import LibTIB.Event (TibEvent(Challenge), decode_event)
 import LibTIB.Request (TibRequest(NewAcc, Auth), encode_request)
 import LibTIB.Common (Account(..), server_ip, Server(ServGray))
 import Util.XXD (xxd)
-
-tor = SockAddrInet 9050 . hostAddress <$> getHostByName "127.0.0.1"
-
-tor_connect sock host port = tor >>= \t -> socksConnectName sock t host port
+import Util.Sock (sconnect, tor)
 
 doctek = Account "i\x9814you" "i\x9814you" "8ef4d93d0123316a4fbc85f65446b156"
             "android os mifitech44u" "client_v1.7-gp"
 
 main = withSocketsDo $ do
-    sock <- socket AF_INET Stream =<< getProtocolNumber "tcp"
-    tor_connect sock server_ip 32040
+    sock <- sconnect tor server_ip 32040
     shouldbeiv <- recv sock 1024
     case decode_event shouldbeiv of
         Left wut -> error wut
