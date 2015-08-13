@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
 module Clive where
 
@@ -7,26 +7,14 @@ import qualified Data.ByteString.Char8 as Char8
 import qualified RadixTrie as R
 import qualified Text.Parsec as P
 
-import Pwned  -- , Direction(..), doctek, tib, get_tib_response, TibResponse(..))
-import LibTIB.Entity (is_npc, Resources, Entity(Npc))
-import CreateAccount (tor_connect)
-import XXD (xxd, as_hex)
-
 import Data.ByteString (ByteString)
-import Network.Socket
-    ( withSocketsDo
-    , socket
-    , Family(AF_INET)
-    , SocketType(Stream)
-    , Socket
-    )
+import Network.Socket (withSocketsDo, Socket)
 import Data.Serialize (runGet, runGetPartial, Result(..))
 import Data.Char (isSpace)
 import Data.Word (Word32)
 import Data.List (delete)
 import Text.Parsec.ByteString (Parser)
 import Network.Socket.ByteString (recv, send)
-import Network.BSD (getProtocolNumber)
 import Control.Concurrent (threadDelay, forkIO)
 import Control.Monad.Trans (liftIO)
 import System.IO (withFile, openFile, IOMode(ReadMode, WriteMode), hGetLine,
@@ -41,53 +29,66 @@ import Data.IORef (newIORef, readIORef, writeIORef, atomicModifyIORef', IORef)
 import Numeric (readHex, readDec)
 import System.Random (randomRIO)
 
+import LibTIB.Entity (is_npc, Entity(Npc))
+import LibTIB.Common
+import qualified LibTIB.Request as R
+import qualified LibTIB.Event as E
+import Util.Sock (sconnect, tor)
+import Util.XXD (xxd, as_hex)
+
 data CliveState
     = CliveState
-    { c_id :: Word32
-    , c_auto_attack :: Bool
-    , c_following :: Maybe Word32
-    , c_attacking :: Maybe Word32
-    , c_targets :: [Word32]
+    { c_auto_attack :: Bool
+    , c_following :: Maybe EntID
+    , c_attacking :: Maybe EntID
+    , c_targets :: [EntID]
     , c_resources :: Resources
     }
     deriving Show
 
 data CliveCmd
-    = RawCmd TibRequest
+    = RawCmd R.TibRequest
     | ListStatus
     | SetAuto Bool
-    | Follow Word32
+    | Follow (Maybe EntID)
 
-get_ip :: Socket -> IO ByteString
-get_ip sock = do
-    tor_connect sock "whatismyip.org" 80
+data ToUSec = Sec | Ms | Us
+
+instance Num a => Num (ToUSec -> a) where
+    fromInteger n unit = fromInteger $ n * scale
+        where scale = case unit of { Us -> 1; Ms -> 1000; Sec -> 1000000; }
+
+get_ip :: IO ByteString
+get_ip = do
+    sock <- sconnect tor "whatismyip.org" 80
     send sock gitit
-    collect ""
+    collect sock ""
     where
     gitit = "GET / HTTP/1.1\r\n\
             \User-Agent: curl/7.35.0\r\n\
             \Host: localhost:8000\r\n\
             \Accept: */*\r\n\r\n"
-    collect bs = do
-        more <- recv sock 65536
-        if more == "" then return bs else collect $ BStr.append bs more
+    collect s bs = do
+        more <- recv s 65536
+        if more == "" then return bs else collect s $ BStr.append bs more
 
-send_tib :: Socket -> TibRequest -> IO ()
+send_tib :: Socket -> R.TibRequest -> IO ()
 send_tib sock req = void $ do
     putStrLn $ "Sending " ++ show req
-    putStrLn $ ">>>>>>\n" ++ xxd 16 4 (put_tib_request req)
-    send sock $ put_tib_request req
+    putStrLn $ ">>>>>>\n" ++ xxd 16 4 payload
+    send sock payload
+    where payload = R.encode_request req
 
 register_account :: Socket -> ByteString -> Account -> IO (Maybe ByteString)
 register_account sock iv acc = do
     putStrLn $ "Registering account: " ++ show acc
-    send_tib sock $ NewAcc iv acc GrayServer
+    send_tib sock $ R.NewAcc iv acc ServGray
     reply <- recv sock 1024
-    case runGet get_tib_response reply of
-        Right (Notice NoteAccountCreateSuccess) -> do
+    case E.decode_event reply of
+        Right (E.Notice E.NoteCreateSuccess) -> do
             putStrLn "Success!"
             return Nothing
-        Right n@Notice{} -> do
+        Right n@E.Notice{} -> do
             putStrLn $ "Uh oh, received notice: " ++ show n
             return $ Just reply
         _ -> do
@@ -126,16 +127,13 @@ create_fifo (Account {acc_user=u}) = do
 
 main :: IO ()
 main = withSocketsDo $ do
-    BStr.putStrLn =<< get_ip =<< socket AF_INET Stream
-                             =<< getProtocolNumber "tcp"
-
-    sock <- socket AF_INET Stream =<< getProtocolNumber "tcp"
-    tor_connect sock tib 32040
+    BStr.putStrLn =<< get_ip
+    sock <- sconnect tor server_ip 32040
     shouldbeiv <- recv sock 1024
 
-    case runGet get_tib_response shouldbeiv of
+    case E.decode_event shouldbeiv of
         Left wut -> error wut
-        Right (Challenge iv ver) -> do
+        Right (E.Challenge iv ver) -> do
             putStrLn $ "Server version: " ++ show ver
             putStrLn $ "IV received: " ++ show iv
 
@@ -145,12 +143,10 @@ main = withSocketsDo $ do
                 Just bytes -> putStrLn (xxd 16 4 bytes) >> mzero
                 Nothing -> do
                     putStrLn "Logging in."
-                    send_tib sock $ Auth iv acc GrayServer
+                    send_tib sock $ R.Auth iv acc ServGray
 
-                    var <- newIORef . Partial $ runGetPartial get_tib_response
-                    me <- get_clives_id acc sock var
-
-                    clive <- newIORef $ CliveState me False Nothing Nothing []
+                    var <- newIORef . Partial $ runGetPartial E.get_event
+                    clive <- newIORef $ CliveState False Nothing Nothing []
                                                    (0, 0, 0, 0, 0)
                     h <- create_fifo acc
                     forkIO $ ping_thread sock
@@ -160,22 +156,15 @@ main = withSocketsDo $ do
         Right unknown-> do
             putStrLn $ "Unknown response from server: " ++ show unknown
 
-get_clives_id :: Account -> Socket -> IORef (Result TibResponse) -> IO Word32
-get_clives_id acc sock var = do
-    ev <- get_event sock var
-    case ev of
-        Just (NameToID name cid) | name == acc_user acc -> return cid
-        _ -> get_clives_id acc sock var
-
 ping_thread :: Socket -> IO ()
 ping_thread sock = do
-    send_tib sock Ping
+    send_tib sock R.Ping
     threadDelay $ 15 Sec
     -- TODO: do something about the inevitable server response
     ping_thread sock
 
-get_event :: Socket -> IORef (Result TibResponse) -> IO (Maybe TibResponse)
-get_event sock var = do
+recv_event :: Socket -> IORef (Result E.TibEvent) -> IO (Maybe E.TibEvent)
+recv_event sock var = do
     result <- readIORef var
     case result of
         Partial f -> do
@@ -185,20 +174,20 @@ get_event sock var = do
         Fail err remaining -> do
             -- putStrLn $ "parse error on " ++ xxd 16 4 bytes
             putStrLn $ "error was: " ++ err
-            writeIORef var $ runGetPartial get_tib_response remaining
+            writeIORef var $ runGetPartial E.get_event remaining
             return Nothing
         Done event remaining -> do
             case event of
-                Unknown code bs -> do
+                E.Unknown code bs -> do
                     putStrLn $ "Unknown event " ++ show (as_hex code)
                     putStrLn $ "<<<<<<\n" ++ xxd 16 4 bs
                 e -> putStrLn $ "Received event: " ++ show e
-            writeIORef var $ runGetPartial get_tib_response remaining
+            writeIORef var $ runGetPartial E.get_event remaining
             return $ Just event
 
-run_clive :: Socket -> IORef (Result TibResponse) -> IORef CliveState -> IO ()
+run_clive :: Socket -> IORef (Result E.TibEvent) -> IORef CliveState -> IO ()
 run_clive sock var cliveref = do
-    ev <- liftIO $ get_event sock var
+    ev <- liftIO $ recv_event sock var
     case ev of
         Nothing -> return ()
         Just ev -> do
@@ -208,10 +197,10 @@ run_clive sock var cliveref = do
 
 decide_clive:: Socket -> StateT CliveState IO ()
 decide_clive sock = do
-    CliveState _ autoon owner target targets rs <- get
+    CliveState autoon owner target targets rs <- get
 
     case targets of
-        npc : _ | autoon && target == Nothing -> attack npc
+        npc : _ | autoon && target == Nothing -> attack $ Just npc
         _ -> return ()
 
     case rs of
@@ -222,29 +211,29 @@ decide_clive sock = do
         _ -> return ()
     where
     attack npc = do
-        liftIO . send_tib sock $ ReqAttack npc
-        modify $ \st -> st { c_attacking = Just npc }
+        liftIO . send_tib sock $ R.Attack npc
+        modify $ \st -> st { c_attacking = npc }
 
     transfer_to whom rs = do
-        liftIO . send_tib sock $ ReqResourceTransfer whom rs
+        liftIO . send_tib sock $ R.TransferRes whom rs
         modify $ \st -> st { c_resources = (0, 0, 0, 0, 0) }
 
-update_clive :: Socket -> TibResponse -> StateT CliveState IO ()
-update_clive _ (ChatEvent msg sender _ _) = return ()  -- TODO: chat commands!
-update_clive _ (UpdateSectorEnts _ entmap) = do
+update_clive :: Socket -> E.TibEvent -> StateT CliveState IO ()
+update_clive _ (E.Chat msg sender _ _) = return ()  -- TODO: chat commands!
+update_clive _ (E.SectorEnts _ entmap) = do
     modify $ \st -> st { c_targets = map fst $ filter (is_npc . snd) entmap }
     update_targeting
 -- update_clive (SetShipResources entid res) = do
 --     me <- c_id <$> get
 --     if entid == me then modify $ \st -> st { c_resources = res } else return ()
-update_clive _ (EntityArrival entid Npc{}) =
+update_clive _ (E.Arrived entid Npc{}) =
     modify $ \st -> st { c_targets = entid : c_targets st }
-update_clive sock (EntityDepart entid death) = do
-    CliveState _ autoon owner target targets rs <- get
+update_clive sock (E.Departed entid death) = do
+    CliveState autoon owner target targets rs <- get
     when (death == Destroyed && Just entid == target && Nothing /= owner) $ do
         -- transfer our resources
         let Just oid = owner
-        liftIO . send_tib sock $ ReqResourceTransfer oid (99, 99, 99, 99, 99)
+        liftIO . send_tib sock $ R.TransferRes oid (99, 99, 99, 99, 99)
     modify $ \st -> st { c_targets = delete entid $ targets }
     update_targeting
 update_clive _ _ = return ()
@@ -266,14 +255,10 @@ cmd_loop sock fifo cliveref = forever . handleJust eof_error retry $ do
         Right (RawCmd cmd) -> do
             putStrLn $ "Sending raw command: " ++ show cmd
             send_tib sock cmd
-        Right (Follow 0) -> do
-            atomicModifyIORef' cliveref $
-                \c -> (c { c_following = Nothing }, ())
-            send_tib sock $ ReqFollow 0
         Right (Follow owner) -> do
             atomicModifyIORef' cliveref $
-                \c -> (c { c_following = Just owner }, ())
-            send_tib sock $ ReqFollow owner
+                \c -> (c { c_following = owner }, ())
+            send_tib sock $ R.Follow owner
         Right ListStatus -> do
             putStrLn "clive status: "
             readIORef cliveref >>= print
@@ -314,6 +299,12 @@ numeral = do
     fst . head . reader <$> P.many1 digs
     where prefix = P.try $ P.string "0x" >> return (readHex, P.hexDigit)
 
+entid = EntID <$> numeral
+
+mb_entid = do
+    n <- numeral
+    return $ if n == 0 then Nothing else Just $ EntID n
+
 resources = (,,,,) <$> num <*> num <*> num <*> num <*> num
     where num = lexeme numeral
 
@@ -324,20 +315,19 @@ rarity = do
 chat_command = do
     -- only sector chat allowed for now
     msg <- P.many1 P.anyChar
-    return $ ReqChat msg "" "" Sector
+    return $ R.Chat msg "" "" Sector
 
 command :: Parser CliveCmd
 command = join . trie_lookup "command" cmds $ lexeme not_spaces1
     where
     cmds = R.from_list
-        [ ("move", RawCmd . Move <$> direction)
-        , ("attack", RawCmd . ReqAttack <$> lexeme numeral)
-        , ("follow", Follow <$> lexeme numeral)
-        , ("transfer", RawCmd <$> (ReqResourceTransfer <$> lexeme numeral
-                                                       <*> lexeme resources))
+        [ ("move", RawCmd . R.Move <$> direction)
+        , ("attack", RawCmd . R.Attack <$> lexeme mb_entid)
+        , ("follow", Follow <$> lexeme mb_entid)
+        , ("transfer", RawCmd <$> (R.TransferRes <$> lexeme entid <*> lexeme resources))
         , ("chat", RawCmd <$> chat_command)
-        , ("auctionhouse", RawCmd <$> (ReqAuctions <$> lexeme numeral <*> lexeme rarity))
-        , ("quit", return . RawCmd $ ReqDisconnect False)
+        , ("auctionhouse", RawCmd <$> (R.ListAuctions <$> (toEnum . fromIntegral <$> lexeme numeral) <*> lexeme rarity))
+        , ("quit", return . RawCmd $ R.Disconnect False)
         , ("status", return ListStatus)
         , ("auto", return $ SetAuto True)
         , ("stop", return $ SetAuto False)
