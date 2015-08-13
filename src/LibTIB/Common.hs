@@ -1,9 +1,10 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
 module LibTIB.Common where
 
 import qualified Data.ByteString.Char8 as Char8
 import Data.ByteString (ByteString)
+import Data.String (IsString)
 import Data.Serialize
     ( putWord8
     , putWord16be
@@ -175,4 +176,6 @@ tib_key :: ByteString
 tib_key = Char8.pack
     "\x02\x27\x75\xfe\xfe\x08\xbd\x35\xf7\x92\x58\x5d\xd6\xc1\x18\xd9"
 
+-- | deliberately kept polymorphic for bs and [char]
+server_ip :: IsString a => a
 server_ip = "66.119.27.227"
