@@ -7,12 +7,14 @@ import Data.Serialize
     , getWord8
     , getWord16be
     , getWord32be
+    , decode
     )
 import Data.ByteString (ByteString)
 import Control.Applicative ((<$>), (<*>))
 import Data.Word (Word8, Word16)
 import LibTIB.Entity (Entity, get_entity, get_ship_resources)
-import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr)
+import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr,
+                      TibPacket(..))
 
 data TibEvent
     = Challenge ByteString Word8  -- ^ iv and version byte
@@ -80,3 +82,7 @@ attack = do
     damage <- getWord16be
     hit <- getWord8
     return $ Attacked attacker target damage (hit /= 0x00)
+
+decode_event :: ByteString -> Either String TibEvent
+decode_event bs = case decode bs of
+    { Left e -> Left e; Right (TibPacket rv) -> Right rv; }

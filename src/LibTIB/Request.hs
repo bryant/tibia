@@ -9,6 +9,7 @@ import Data.Serialize
     , putWord8
     , putWord16be
     , putWord32be
+    , encode
     )
 import Data.ByteString (ByteString)
 import Data.Word (Word8)
@@ -24,6 +25,7 @@ import LibTIB.Common
     , putstr
     , Account(..)
     , tib_key
+    , TibPacket(..)
     )
 
 data TibRequest
@@ -96,3 +98,6 @@ padded bs = bs `BStr.append` padding
     nearest16 = 16 * quot (BStr.length bs + 16) 16  -- fast integer ceil + 1
     padlen = nearest16 - BStr.length bs
     padding = BStr.replicate padlen $ fromIntegral padlen
+
+encode_request :: TibRequest -> ByteString
+encode_request req = encode $ TibPacket req
