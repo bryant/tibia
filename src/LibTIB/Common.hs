@@ -21,6 +21,7 @@ import Data.Serialize
     )
 import Data.Word (Word8, Word32)
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad (mzero)
 
 data Account
     = Account
@@ -49,7 +50,7 @@ data ChatType
     | MarketEvent
     | Universe
     | NullChatType  -- 0xffffff80
-    deriving (Show, Enum)
+    deriving (Show, Enum, Bounded)
 
 data DepartType
     = Silent  -- 0x00
@@ -60,12 +61,12 @@ data DepartType
     | RiftJump  -- 0x05
     | Logout  -- 0x06
     | Dragged Direction  -- 0x07
-    deriving Show
+    deriving (Show, Eq)
 
 data Direction
     = Northwest | North | Northeast | East | Southeast | South | Southwest
     | West
-    deriving (Show, Enum)
+    deriving (Show, Enum, Eq, Bounded)
 
 data Server = ServRed | ServBlue | ServGreen | ServGray
     deriving (Show, Enum)
@@ -79,7 +80,7 @@ data ItemType
     | TyEngine
     | TyComputer
     | TySpecial
-    deriving (Show, Enum)
+    deriving (Show, Enum, Bounded)
 
 data Rarity
     = RarityNull  -- 0xffffff80, should never happen
@@ -90,7 +91,7 @@ data Rarity
     | Legendary  -- 0x05
     | Precursor  -- 0x06
     | Ultimate  -- 0x07
-    deriving (Show, Enum)
+    deriving (Show, Enum, Bounded)
 
 newtype TibPacket t = TibPacket t deriving Show
 
@@ -108,11 +109,11 @@ instance Serialize t => Serialize (TibPacket t) where
 
 instance Serialize Rarity where
     put = putWord8 . fromIntegral . fromEnum
-    get = toEnum . fromIntegral <$> getWord8
+    get = get_enum getWord8 >>= maybe mzero return
 
 instance Serialize ItemType where
     put = putWord8 . fromIntegral . fromEnum
-    get = toEnum . fromIntegral <$> getWord8
+    get = get_enum getWord8 >>= maybe mzero return
 
 instance Serialize EntID where
     put (EntID eid) = putWord32be eid
@@ -133,14 +134,15 @@ instance Serialize DepartType where
 
 instance Serialize Direction where
     put = putWord8 . fromIntegral . fromEnum
-    get = toEnum . fromIntegral <$> getWord8
+    get = get_enum getWord8 >>= maybe mzero return
 
 instance Serialize ChatType where
     put = putWord8 . fromIntegral . fromEnum
 
-    get = getWord8 >>= \n -> return $ case n of
-        0x80 -> NullChatType
-        n -> toEnum $ fromIntegral n
+    get = getWord8 >>= \n -> case safe_enum n of
+        Just n -> return n
+        Nothing | n == 0x80 -> return NullChatType
+        _ -> mzero
 
 newtype TibPrim p = TibPrim { unprim :: p }
 
@@ -159,6 +161,17 @@ instance Serialize (TibPrim Bool) where
         0x80 -> return $ TibPrim False
         0x7f -> return $ TibPrim True
         n -> fail $ "unexpected tib bool " ++ show n
+
+get_enum :: (Enum a, Bounded a, Integral b) => Get b -> Get (Maybe a)
+get_enum getter = safe_enum <$> getter
+
+safe_enum :: (Enum a, Bounded a, Integral b) => b -> Maybe a
+safe_enum = _safe_enum minBound maxBound . fromIntegral
+
+_safe_enum :: (Enum a, Bounded a) => a -> a -> Int -> Maybe a
+_safe_enum lower upper val
+    | fromEnum lower <= val && val <= fromEnum upper = Just $ toEnum val
+    | otherwise = Nothing
 
 getstr :: Get String
 getstr = fmap unprim get
