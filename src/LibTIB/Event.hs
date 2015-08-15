@@ -31,6 +31,7 @@ data TibEvent
     | Departed EntID DepartType
     | RecvTrade PlayerID Word32 Word32 (Maybe Item) PlayerID Word32 Word32 (Maybe Item) Bool
     -- ^ player (not entity!) id, creds, bds
+    | LoggedIn String PlayerID
     | Unknown Word8 ByteString
     deriving Show
 
@@ -61,6 +62,7 @@ event_code =
     [ (0x84, challenge)
     , (0x86, ping)
     , (0x88, notice)
+    , (0x8a, logged_in)
     , (0x8f, sector_info)
     , (0x9d, set_ship_resources)
     , (0xbe, chat)
@@ -91,6 +93,13 @@ notice = Notice <$> (getWord8 >>= ntype)
         0x0d -> return NoteCreateSuccess  -- = int32(0x0d)
         n -> fail $ "unknown notice type " ++ show n
 
+logged_in = do
+    username <- getstr
+    pid <- getWord32be
+    hardcore <- getbool
+    shipskin <- getWord8
+    reserved <- getByteString 7
+    return $ LoggedIn username pid
 
 chat = Chat <$> getstr <*> getstr <*> getstr <*> get
 

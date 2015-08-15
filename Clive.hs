@@ -4,15 +4,16 @@ module Clive where
 
 import qualified Data.ByteString as BStr
 import qualified Data.ByteString.Char8 as Char8
-import qualified RadixTrie as R
+import qualified RadixTrie as Radix
 import qualified Text.Parsec as P
+import qualified Data.IntMap as IMap
 
 import Data.ByteString (ByteString)
 import Network.Socket (withSocketsDo, Socket)
 import Data.Serialize (runGet, runGetPartial, Result(..))
 import Data.Char (isSpace)
 import Data.Word (Word32)
-import Data.List (delete)
+import Data.List (delete, foldl')
 import Text.Parsec.ByteString (Parser)
 import Network.Socket.ByteString (recv, send)
 import Control.Concurrent (threadDelay, forkIO)
@@ -29,7 +30,7 @@ import Data.IORef (newIORef, readIORef, writeIORef, atomicModifyIORef', IORef)
 import Numeric (readHex, readDec)
 import System.Random (randomRIO)
 
-import LibTIB.Entity (is_npc, Entity(Npc))
+import LibTIB.Entity (is_npc, Entity(Npc, Ship), PlayerID)
 import LibTIB.Common
 import qualified LibTIB.Request as R
 import qualified LibTIB.Event as E
@@ -44,6 +45,8 @@ data CliveState
     , c_targets :: [EntID]
     , c_resources :: Resources
     , c_location :: E.Node
+    , c_player_ids :: Radix.RadixTrie Char PlayerID
+    , c_player_ents :: IMap.IntMap EntID  -- ^ playerid -> entid
     }
     deriving Show
 
@@ -52,6 +55,7 @@ data CliveCmd
     | ListStatus
     | SetAuto Bool
     | Follow (Maybe EntID)
+    | LookUpPlayer String
 
 data ToUSec = Sec | Ms | Us
 
@@ -66,6 +70,8 @@ uninitialized_clive = CliveState
     , c_targets = []
     , c_resources = (0, 0, 0, 0, 0)
     , c_location = E.NonRift 0 0
+    , c_player_ids = Radix.trie_empty
+    , c_player_ents = IMap.empty
     }
 
 get_ip :: IO ByteString
@@ -206,7 +212,7 @@ run_clive sock var cliveref = do
 
 decide_clive:: Socket -> StateT CliveState IO ()
 decide_clive sock = do
-    CliveState autoon owner target targets rs _ <- get
+    CliveState autoon owner target targets rs _ _ _ <- get
 
     case targets of
         npc : _ | autoon && target == Nothing -> attack $ Just npc
@@ -232,22 +238,34 @@ update_clive _ (E.Chat msg sender _ _) = return ()  -- TODO: chat commands!
 update_clive _ (E.SectorEnts loc entmap) = do
     modify $ \st -> st {
             c_targets = map fst $ filter (is_npc . snd) entmap,
-            c_location = loc
+            c_location = loc,
+            c_player_ents = foldl' collect_players IMap.empty entmap
         }
     update_targeting
+    where
+    collect_players im (entid, Ship _ pid _) =
+        IMap.insert (fromIntegral pid) entid im
+    collect_players im _ = im
 -- update_clive (SetShipResources entid res) = do
 --     me <- c_id <$> get
 --     if entid == me then modify $ \st -> st { c_resources = res } else return ()
 update_clive _ (E.Arrived entid Npc{}) =
     modify $ \st -> st { c_targets = entid : c_targets st }
+update_clive _ (E.Arrived entid (Ship _ pid _)) =
+    modify $ \st -> st {
+        c_player_ents = IMap.insert (fromIntegral pid) entid $ c_player_ents st
+        }
 update_clive sock (E.Departed entid death) = do
-    CliveState autoon owner target targets rs _  <- get
+    CliveState autoon owner target targets rs _ _ _ <- get
     when (death == Destroyed && Just entid == target && Nothing /= owner) $ do
         -- transfer our resources
         let Just oid = owner
         liftIO . send_tib sock $ R.TransferRes oid (99, 99, 99, 99, 99)
     modify $ \st -> st { c_targets = delete entid $ targets }
     update_targeting
+update_clive _ (E.LoggedIn username pid) = modify $ \st -> st {
+        c_player_ids = Radix.upsert (c_player_ids st) username pid
+    }
 update_clive _ _ = return ()
 
 update_targeting :: StateT CliveState IO ()
@@ -278,6 +296,16 @@ cmd_loop sock fifo cliveref = forever . handleJust eof_error retry $ do
             -- TODO: below is clumsy. consider stm
             c <- readIORef cliveref
             atomicModifyIORef' cliveref $ \c -> (c { c_auto_attack = n }, ())
+        Right (LookUpPlayer name) -> do
+            cstate <- readIORef cliveref
+            let pids = c_player_ids cstate
+                pents = c_player_ents cstate
+            case Radix.lookup pids name of
+                Nothing -> putStrLn $ name ++ " not found"
+                Just pid | Just entid <- IMap.lookup (fromIntegral pid) pents ->
+                    putStrLn $ name ++ " has pid " ++ show pid ++ " entid " ++
+                               show entid
+                Just pid -> putStrLn $ name ++ " has pid " ++ show pid
     where retry _ = threadDelay (5 Sec) >> cmd_loop sock fifo cliveref
 
 not_spaces1 = P.many1 . P.satisfy $ not . isSpace
@@ -287,14 +315,14 @@ lexeme act = act <* P.spaces
 
 trie_lookup lab trie inp = do
     entry <- inp
-    case R.lookup trie entry of
+    case Radix.lookup trie entry of
          Nothing -> P.parserFail $ "not found in trie: " ++ lab ++ ", "
                                    ++ show entry
          Just blah -> return blah
 
 direction = trie_lookup "direction" dirs $ lexeme not_spaces1
     where
-    dirs = R.from_list
+    dirs = Radix.from_list
         [ ("nw", Northwest)
         , ("n", North)
         , ("ne", Northeast)
@@ -340,7 +368,7 @@ chat_command = do
 command :: Parser CliveCmd
 command = join . trie_lookup "command" cmds $ lexeme not_spaces1
     where
-    cmds = R.from_list
+    cmds = Radix.from_list
         [ ("move", RawCmd . R.Move <$> direction)
         , ("attack", RawCmd . R.Attack <$> lexeme mb_entid)
         , ("follow", Follow <$> lexeme mb_entid)
@@ -360,6 +388,7 @@ command = join . trie_lookup "command" cmds $ lexeme not_spaces1
                                             <*> lexeme numeral
                                             <*> return Nothing
                                             <*> lexeme numerbool))
+        , ("whois", LookUpPlayer <$> lexeme (P.many1 P.anyChar))
         -- , ("sectormsg", CSectorChat <$> rest)
         -- , ("msg", CPrivMsg <$> rest)
         -- , ("list", CListSector)
