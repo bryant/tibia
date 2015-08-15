@@ -12,7 +12,7 @@ import Data.Serialize
     , encode
     )
 import Data.ByteString (ByteString)
-import Data.Word (Word8)
+import Data.Word (Word8, Word32)
 import LibTIB.Common
     ( EntID(..)
     , ChatType
@@ -27,6 +27,7 @@ import LibTIB.Common
     , tib_key
     , TibPacket(..)
     )
+import LibTIB.Entity (Item(..), PlayerID)
 
 data TibRequest
     = Auth ByteString Account Server
@@ -42,6 +43,7 @@ data TibRequest
     -- ^ message, sender, recipient if ChatType == Private
     | Disconnect Bool -- ^ "defend sector after quit"
     | ListAuctions ItemType Rarity
+    | SendTrade PlayerID Word32 Word32 (Maybe Item) PlayerID Word32 Word32 (Maybe Item) Bool
     | Ping
     deriving Show
 
@@ -72,6 +74,14 @@ instance Serialize TibRequest where
     put (Disconnect defend) = cmd 0x82 $ putbool defend
     put (ListAuctions itemcls rarity) = cmd 0x2c $
         mapM_ (putWord8 . fromIntegral) [fromEnum itemcls, fromEnum rarity]
+    put (SendTrade fstid fstcreds fstbds fstit sndid sndcreds sndbds sndit fin) =
+        cmd 0xd8 $ do
+            mapM_ putWord32be [fstid, sndid]
+            mapM_ putWord32be [fstcreds, fstbds]
+            putbool False  -- TODO: put actual items here!!!!!
+            mapM_ putWord32be [sndcreds, sndbds]
+            putbool False
+            putbool fin
     put Ping = cmd 0x86 $ return ()
 
     -- maybe later

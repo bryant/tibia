@@ -12,9 +12,10 @@ import Data.Serialize
     )
 import Data.ByteString (ByteString)
 import Control.Applicative ((<$>), (<*>))
-import Data.Word (Word8, Word16)
-import LibTIB.Entity (Entity, get_entity, get_ship_resources)
-import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr,
+import Data.Word (Word8, Word16, Word32)
+import LibTIB.Entity (Entity, Item(..), PlayerID, get_item, get_entity,
+                      get_ship_resources)
+import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr, getbool,
                       TibPacket(..))
 
 data TibEvent
@@ -28,6 +29,8 @@ data TibEvent
     | SetShipResources EntID Resources
     | Arrived EntID Entity
     | Departed EntID DepartType
+    | RecvTrade PlayerID Word32 Word32 (Maybe Item) PlayerID Word32 Word32 (Maybe Item) Bool
+    -- ^ player (not entity!) id, creds, bds
     | Unknown Word8 ByteString
     deriving Show
 
@@ -64,6 +67,7 @@ event_code =
     , (0xaa, departure)
     , (0xab, arrival)
     , (0xad, attack)
+    , (0xd8, trade_received)
     ]
 
 expect8 byte = getWord8 >>= \b -> if b == byte then return ()
@@ -112,6 +116,18 @@ attack = do
     damage <- getWord16be
     hit <- getWord8
     return $ Attacked attacker target damage (hit /= 0x00)
+
+trade_received = do
+    [andere, moi] <- sequence $ replicate 2 getWord32be
+    [andcreds, andbds] <- sequence $ replicate 2 getWord32be
+    anditem <- to_maybe_item <$> get_item
+    [moncreds, monbds] <- sequence $ replicate 2 getWord32be
+    monitem <- to_maybe_item <$> get_item
+    final <- getbool
+    return $ RecvTrade andere andcreds andbds anditem moi moncreds monbds monitem final
+    where
+    to_maybe_item (UnknownItem _) = Nothing
+    to_maybe_item item = Just item
 
 decode_event :: ByteString -> Either String TibEvent
 decode_event bs = case decode bs of

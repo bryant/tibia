@@ -299,6 +299,14 @@ numeral = do
     fst . head . reader <$> P.many1 digs
     where prefix = P.try $ P.string "0x" >> return (readHex, P.hexDigit)
 
+numerbool = try_choice [numbool, strfalse, strtrue]
+    where
+    numbool = numeral >>= \n -> return $ if n <= 0 then False else True
+    strfalse = try_choice [P.string "false", P.string "False"] >> return False
+    strtrue = try_choice [P.string "true", P.string "True"] >> return True
+
+try_choice = P.choice . map P.try
+
 entid = EntID <$> numeral
 
 mb_entid = do
@@ -331,6 +339,15 @@ command = join . trie_lookup "command" cmds $ lexeme not_spaces1
         , ("status", return ListStatus)
         , ("auto", return $ SetAuto True)
         , ("stop", return $ SetAuto False)
+        , ("trade", RawCmd <$> (R.SendTrade <$> lexeme numeral
+                                            <*> lexeme numeral
+                                            <*> lexeme numeral
+                                            <*> return Nothing
+                                            <*> lexeme numeral
+                                            <*> lexeme numeral
+                                            <*> lexeme numeral
+                                            <*> return Nothing
+                                            <*> lexeme numerbool))
         -- , ("sectormsg", CSectorChat <$> rest)
         -- , ("msg", CPrivMsg <$> rest)
         -- , ("list", CListSector)
