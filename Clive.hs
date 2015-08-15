@@ -43,6 +43,7 @@ data CliveState
     , c_attacking :: Maybe EntID
     , c_targets :: [EntID]
     , c_resources :: Resources
+    , c_location :: E.Node
     }
     deriving Show
 
@@ -57,6 +58,15 @@ data ToUSec = Sec | Ms | Us
 instance Num a => Num (ToUSec -> a) where
     fromInteger n unit = fromInteger $ n * scale
         where scale = case unit of { Us -> 1; Ms -> 1000; Sec -> 1000000; }
+
+uninitialized_clive = CliveState
+    { c_auto_attack = False
+    , c_following = Nothing
+    , c_attacking = Nothing
+    , c_targets = []
+    , c_resources = (0, 0, 0, 0, 0)
+    , c_location = E.NonRift 0 0
+    }
 
 get_ip :: IO ByteString
 get_ip = do
@@ -146,8 +156,7 @@ main = withSocketsDo $ do
                     send_tib sock $ R.Auth iv acc ServGray
 
                     var <- newIORef . Partial $ runGetPartial E.get_event
-                    clive <- newIORef $ CliveState False Nothing Nothing []
-                                                   (0, 0, 0, 0, 0)
+                    clive <- newIORef uninitialized_clive
                     h <- create_fifo acc
                     forkIO $ ping_thread sock
                     forkIO $ cmd_loop sock h clive
@@ -197,7 +206,7 @@ run_clive sock var cliveref = do
 
 decide_clive:: Socket -> StateT CliveState IO ()
 decide_clive sock = do
-    CliveState autoon owner target targets rs <- get
+    CliveState autoon owner target targets rs _ <- get
 
     case targets of
         npc : _ | autoon && target == Nothing -> attack $ Just npc
@@ -220,8 +229,11 @@ decide_clive sock = do
 
 update_clive :: Socket -> E.TibEvent -> StateT CliveState IO ()
 update_clive _ (E.Chat msg sender _ _) = return ()  -- TODO: chat commands!
-update_clive _ (E.SectorEnts _ entmap) = do
-    modify $ \st -> st { c_targets = map fst $ filter (is_npc . snd) entmap }
+update_clive _ (E.SectorEnts loc entmap) = do
+    modify $ \st -> st {
+            c_targets = map fst $ filter (is_npc . snd) entmap,
+            c_location = loc
+        }
     update_targeting
 -- update_clive (SetShipResources entid res) = do
 --     me <- c_id <$> get
@@ -229,7 +241,7 @@ update_clive _ (E.SectorEnts _ entmap) = do
 update_clive _ (E.Arrived entid Npc{}) =
     modify $ \st -> st { c_targets = entid : c_targets st }
 update_clive sock (E.Departed entid death) = do
-    CliveState autoon owner target targets rs <- get
+    CliveState autoon owner target targets rs _  <- get
     when (death == Destroyed && Just entid == target && Nothing /= owner) $ do
         -- transfer our resources
         let Just oid = owner
