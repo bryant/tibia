@@ -18,10 +18,13 @@ import Data.Serialize
     , Put
     , isolate
     , encode
+    , lookAhead
+    , runGetState
     )
 import Data.Word (Word8, Word32)
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (mzero)
+import Control.Monad (mzero, mplus)
+import Util.XXD (xxd)
 
 data Account
     = Account
@@ -103,9 +106,15 @@ instance Serialize t => Serialize (TibPacket t) where
 
     get = do
         len <- getWord16be  -- packet length sans first two
-        TibPacket `fmap` isolate (fromIntegral len) get
-        -- ^ ensures that entire packet is consumed to keep parsing aligned with
-        -- packet boundaries
+        bytes <- getByteString $ fromIntegral len
+        -- ^ ensures that parsing is kept aligned with packet boundaries
+        case runGetState get bytes 0 of
+            Left err -> fail $ "error parsing:\n" ++ xxd 16 4 bytes
+            Right (rv, "") -> return $ TibPacket rv
+            Right (_, unconsumed) ->
+                -- require that all input of a packet be consumed
+                fail $ "unconsumed input:\n" ++ xxd 16 4 unconsumed ++
+                       "\nthe original packet was:\n" ++ xxd 16 4 bytes
 
 instance Serialize Rarity where
     put = putWord8 . fromIntegral . fromEnum

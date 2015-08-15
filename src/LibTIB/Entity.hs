@@ -7,7 +7,6 @@ import Data.Serialize
     , getByteString
     , Get
     , label
-    , remaining
     , get
     )
 import Data.Word (Word8, Word16, Word32)
@@ -36,7 +35,7 @@ data Entity
     | CargoResource ResourceType Word16  -- = int32(0x00000013)
     | CapturePoint  -- = int32(0x00000014)
     | EntityIDGAF ByteString
-    | EntityUnknown Word8 ByteString  -- ^ entity code, bytes
+    | EntityUnknown Word8  -- ^ entity code
     deriving Show
 
 data PlayerShipClass
@@ -196,7 +195,7 @@ get_entity = label "sector entity" $ do
         0x13 -> CargoResource <$> (toEnum . fromIntegral <$> getWord8)
                               <*> getWord16be
         0x14 -> EntityIDGAF <$> getByteString 1  -- capture point, what is it?
-        n -> EntityUnknown n <$> (remaining >>= getByteString)
+        n -> return $ EntityUnknown n
     return (entid, ent)
 
 is_npc :: Entity -> Bool
