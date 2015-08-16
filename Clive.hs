@@ -54,7 +54,8 @@ data CliveCmd
     = RawCmd R.TibRequest
     | ListStatus
     | SetAuto Bool
-    | Follow (Maybe EntID)
+    | Follow (Maybe String)
+    | Attack (Maybe String)
     | LookUpPlayer String
 
 data ToUSec = Sec | Ms | Us
@@ -194,7 +195,7 @@ recv_event sock var = do
         Done event remaining -> do
             case event of
                 E.Unknown code bs -> do
-                    putStrLn $ "Unknown event " ++ show (as_hex code)
+                    putStrLn $ "Unknown event " ++ as_hex code
                     putStrLn $ "<<<<<<\n" ++ xxd 16 4 bs
                 e -> putStrLn $ "Received event: " ++ show e
             writeIORef var $ runGetPartial E.get_event remaining
@@ -271,9 +272,10 @@ update_clive _ _ = return ()
 update_targeting :: StateT CliveState IO ()
 update_targeting = do
     st <- get
+    let all_targets = c_targets st ++ IMap.elems (c_player_ents st)
     case c_attacking st of
         Nothing -> return ()
-        Just bloop -> if bloop `elem` c_targets st then return () else do
+        Just bloop -> if bloop `elem` all_targets then return () else do
             put $ st { c_attacking = Nothing }
 
 eof_error e = if isEOFError e then Just () else Nothing
@@ -287,8 +289,12 @@ cmd_loop sock fifo cliveref = forever . handleJust eof_error retry $ do
             send_tib sock cmd
         Right (Follow owner) -> do
             atomicModifyIORef' cliveref $
-                \c -> (c { c_following = owner }, ())
-            send_tib sock $ R.Follow owner
+                \c -> (c { c_following = owner >>= to_entid c }, ())
+            c <- readIORef cliveref
+            send_tib sock . R.Follow $ owner >>= to_entid c
+        Right (Attack mbtarget) -> do
+            c <- readIORef cliveref
+            send_tib sock . R.Attack $ mbtarget >>= to_entid c
         Right ListStatus -> do
             putStrLn "clive status: "
             readIORef cliveref >>= print
@@ -307,6 +313,11 @@ cmd_loop sock fifo cliveref = forever . handleJust eof_error retry $ do
                                show entid
                 Just pid -> putStrLn $ name ++ " has pid " ++ show pid
     where retry _ = threadDelay (5 Sec) >> cmd_loop sock fifo cliveref
+
+to_entid :: CliveState -> String -> Maybe EntID
+to_entid c name =
+    Radix.lookup to_pid name >>= flip IMap.lookup entmap . fromIntegral
+    where (to_pid, entmap) = (c_player_ids c, c_player_ents c)
 
 not_spaces1 = P.many1 . P.satisfy $ not . isSpace
 
@@ -353,6 +364,8 @@ mb_entid = do
     n <- numeral
     return $ if n == 0 then Nothing else Just $ EntID n
 
+mb_name = P.try (Just <$> P.many1 P.anyChar) P.<|> return Nothing
+
 resources = (,,,,) <$> num <*> num <*> num <*> num <*> num
     where num = lexeme numeral
 
@@ -370,8 +383,8 @@ command = join . trie_lookup "command" cmds $ lexeme not_spaces1
     where
     cmds = Radix.from_list
         [ ("move", RawCmd . R.Move <$> direction)
-        , ("attack", RawCmd . R.Attack <$> lexeme mb_entid)
-        , ("follow", Follow <$> lexeme mb_entid)
+        , ("attack", Attack <$> lexeme mb_name)
+        , ("follow", Follow <$> lexeme mb_name)
         , ("transfer", RawCmd <$> (R.TransferRes <$> lexeme entid <*> lexeme resources))
         , ("chat", RawCmd <$> chat_command)
         , ("auctionhouse", RawCmd <$> (R.ListAuctions <$> (toEnum . fromIntegral <$> lexeme numeral) <*> lexeme rarity))
