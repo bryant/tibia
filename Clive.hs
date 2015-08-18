@@ -75,20 +75,6 @@ uninitialized_clive = CliveState
     , c_player_ents = IMap.empty
     }
 
-get_ip :: IO ByteString
-get_ip = do
-    sock <- sconnect tor "whatismyip.org" 80
-    send sock gitit
-    collect sock ""
-    where
-    gitit = "GET / HTTP/1.1\r\n\
-            \User-Agent: curl/7.35.0\r\n\
-            \Host: localhost:8000\r\n\
-            \Accept: */*\r\n\r\n"
-    collect s bs = do
-        more <- recv s 65536
-        if more == "" then return bs else collect s $ BStr.append bs more
-
 send_tib :: Socket -> R.TibRequest -> IO ()
 send_tib sock req = void $ do
     putStrLn $ "Sending " ++ show req
@@ -144,7 +130,6 @@ create_fifo (Account {acc_user=u}) = do
 
 main :: IO ()
 main = withSocketsDo $ do
-    BStr.putStrLn =<< get_ip
     sock <- sconnect tor server_ip 32040
     shouldbeiv <- recv sock 1024
 
