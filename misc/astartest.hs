@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, OverlappingInstances, StandaloneDeriving #-}
+{-# LANGUAGE FlexibleInstances, StandaloneDeriving #-}
 
 import qualified Data.Set as Set
 import qualified LibTIB.Event as E
