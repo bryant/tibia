@@ -1,13 +1,15 @@
-{-# LANGUAGE FlexibleInstances, StandaloneDeriving #-}
+{-# LANGUAGE FlexibleInstances, StandaloneDeriving, DeriveGeneric #-}
 
 import qualified Data.Set as Set
+import qualified Data.ByteString as BStr
 import qualified LibTIB.Event as E
 import qualified LibTIB.Request as R
 
+import GHC.Generics (Generic)
 import Control.Applicative ((<$>), (<*>), (<*))
 import Network.Socket.ByteString (recv, send)
 import Data.Time (getCurrentTime, diffUTCTime)
-import Data.Serialize (runGetPartial, Result(..))
+import Data.Serialize (runGetPartial, Result(..), decode, encode, Serialize)
 import Data.Graph.AStar
 import Data.Array
 import LibTIB.Common (Node(..), Direction(..), Server(..), server_ip, is_gray)
@@ -50,14 +52,17 @@ calc_path g from to = aStar neighbors_of dist heurestic_dist (== to) from
     dist = manhattan
     heurestic_dist = manhattan to
 
-deriving instance Read Node
-deriving instance Read Direction
+deriving instance Generic Node
+instance Serialize Node
 
 manhattan :: (Int, Int) -> (Int, Int) -> Int
 manhattan (x, y) (u, v) = max (abs $ x - u) (abs $ y - v)
 
+save_cached_nodes :: [(Node, [Direction])] -> IO ()
+save_cached_nodes = BStr.writeFile "./cachednodes" . encode
+
 get_cached_nodes :: IO [(Node, [Direction])]
-get_cached_nodes = fmap read $ readFile "./cachednodes"
+get_cached_nodes = either fail id . decode <$> BStr.readFile "./cachednodes"
 
 get_gray_nodes :: IO [(Node, [Node])]
 get_gray_nodes =
