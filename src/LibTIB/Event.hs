@@ -18,7 +18,7 @@ import Data.Word (Word8, Word16, Word32)
 import LibTIB.Entity (Entity, Item(..), PlayerID, get_item, get_entity,
                       get_ship_resources)
 import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr, getbool,
-                      TibPacket(..), Direction(..))
+                      TibPacket(..), Direction(..), Node(..))
 
 data TibEvent
     = Challenge ByteString Word8  -- ^ iv and version byte
@@ -49,8 +49,6 @@ data NoticeType
     | NoteBanned  -- = int32(0x0c)
     | NoteCreateSuccess  -- = int32(0x0d)
     deriving Show
-
-data Node = Rift Word8 Word8 | NonRift Word8 Word8 deriving Show
 
 instance Serialize TibEvent where
     put = undefined  -- unused for now.

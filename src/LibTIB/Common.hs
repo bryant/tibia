@@ -96,6 +96,8 @@ data Rarity
     | Ultimate  -- 0x07
     deriving (Show, Enum, Bounded)
 
+data Node = Rift Word8 Word8 | NonRift Word8 Word8 deriving Show
+
 newtype TibPacket t = TibPacket t deriving Show
 
 instance Serialize t => Serialize (TibPacket t) where
@@ -201,3 +203,10 @@ tib_key = Char8.pack
 -- | deliberately kept polymorphic for bs and [char]
 server_ip :: IsString a => a
 server_ip = "66.119.27.227"
+
+is_gray :: Node -> Bool
+is_gray (NonRift x y) = d (fromIntegral x) (fromIntegral y) 39 39 <= 100
+    where
+    d :: Int -> Int -> Int -> Int -> Int
+    d x y u v = (x - u) ^ 2 + (y - v) ^ 2
+is_gray _ = False
