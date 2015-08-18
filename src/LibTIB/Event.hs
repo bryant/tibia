@@ -11,12 +11,14 @@ import Data.Serialize
     , Get
     )
 import Data.ByteString (ByteString)
+import Data.Maybe (catMaybes)
+import Data.Bits (shiftR, (.&.))
 import Control.Applicative ((<$>), (<*>))
 import Data.Word (Word8, Word16, Word32)
 import LibTIB.Entity (Entity, Item(..), PlayerID, get_item, get_entity,
                       get_ship_resources)
 import LibTIB.Common (ChatType, DepartType, EntID, Resources, getstr, getbool,
-                      TibPacket(..))
+                      TibPacket(..), Direction(..))
 
 data TibEvent
     = Challenge ByteString Word8  -- ^ iv and version byte
@@ -25,6 +27,7 @@ data TibEvent
     | Chat String String String ChatType
     -- ^ message, sender, possible private recipient
     | SectorEnts Node [(EntID, Entity)]
+    | NodeConns Node [Direction]
     | Attacked EntID EntID Word16 Bool  -- ^ damage
     | SetShipResources EntID Resources
     | Arrived EntID Entity
@@ -65,6 +68,7 @@ event_code =
     , (0x8a, logged_in)
     , (0x8f, sector_info)
     , (0x9d, set_ship_resources)
+    , (0x9e, node_connections)
     , (0xbe, chat)
     , (0xaa, departure)
     , (0xab, arrival)
@@ -114,6 +118,20 @@ sector_info = do
     return $ SectorEnts node entities
 
 set_ship_resources = SetShipResources <$> get <*> get_ship_resources
+
+node_connections = do
+    xcoord <- getWord8
+    ycoord <- getWord8
+    edges <- getWord8
+    rift <- fmap (\n -> if n < 0x64 then NonRift else Rift) getWord8
+    idk <- sequence $ replicate 2 getWord8
+    return $ NodeConns (rift xcoord ycoord) (parse_edges edges)
+
+parse_edges :: Word8 -> [Direction]
+parse_edges n = catMaybes
+    [if mask .&. n == 0 then Nothing else Just $ toEnum dir
+    | dir <- [fromEnum Northwest .. fromEnum West]
+    , let mask = shiftR 0x80 dir]
 
 departure = Departed <$> get <*> get
 
