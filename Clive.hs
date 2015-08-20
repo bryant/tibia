@@ -56,6 +56,7 @@ data CliveCmd
     | SetAuto Bool
     | Follow (Maybe String)
     | Attack (Maybe String)
+    | Feed String
     | LookUpPlayer String
 
 data ToUSec = Sec | Ms | Us
@@ -297,7 +298,15 @@ cmd_loop sock fifo cliveref = forever . handleJust eof_error retry $ do
                     putStrLn $ name ++ " has pid " ++ show pid ++ " entid " ++
                                show entid
                 Just pid -> putStrLn $ name ++ " has pid " ++ show pid
+        Right (Feed name) -> do
+            cstate <- readIORef cliveref
+            case to_entid cstate name of
+                Nothing -> putStrLn $ name ++ " not found"
+                Just entid -> send_tib sock $ R.TransferRes entid full
     where retry _ = threadDelay (5 Sec) >> cmd_loop sock fifo cliveref
+
+full :: Resources
+full = (0xff, 0xff, 0xff, 0xff, 0xff)
 
 to_entid :: CliveState -> String -> Maybe EntID
 to_entid c name =
@@ -370,7 +379,7 @@ command = join . trie_lookup "command" cmds $ lexeme not_spaces1
         [ ("move", RawCmd . R.Move <$> direction)
         , ("attack", Attack <$> lexeme mb_name)
         , ("follow", Follow <$> lexeme mb_name)
-        , ("transfer", RawCmd <$> (R.TransferRes <$> lexeme entid <*> lexeme resources))
+        , ("feed", Feed <$> lexeme name)
         , ("chat", RawCmd <$> chat_command)
         , ("auctionhouse", RawCmd <$> (R.ListAuctions <$> (toEnum . fromIntegral <$> lexeme numeral) <*> lexeme rarity))
         , ("quit", return . RawCmd $ R.Disconnect False)
