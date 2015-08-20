@@ -44,7 +44,7 @@ data CliveState
     , c_attacking :: Maybe EntID
     , c_targets :: [EntID]
     , c_resources :: Resources
-    , c_location :: E.Node
+    , c_location :: Node
     , c_player_ids :: Radix.RadixTrie Char PlayerID
     , c_player_ents :: IMap.IntMap EntID  -- ^ playerid -> entid
     }
@@ -71,7 +71,7 @@ uninitialized_clive = CliveState
     , c_attacking = Nothing
     , c_targets = []
     , c_resources = (0, 0, 0, 0, 0)
-    , c_location = E.NonRift 0 0
+    , c_location = NonRift 0 0
     , c_player_ids = Radix.trie_empty
     , c_player_ents = IMap.empty
     }
@@ -306,7 +306,7 @@ cmd_loop sock fifo cliveref = forever . handleJust eof_error retry $ do
     where retry _ = threadDelay (5 Sec) >> cmd_loop sock fifo cliveref
 
 full :: Resources
-full = (0xff, 0xff, 0xff, 0xff, 0xff)
+full = (100, 100, 100, 100, 100)
 
 to_entid :: CliveState -> String -> Maybe EntID
 to_entid c name =
@@ -379,7 +379,7 @@ command = join . trie_lookup "command" cmds $ lexeme not_spaces1
         [ ("move", RawCmd . R.Move <$> direction)
         , ("attack", Attack <$> lexeme mb_name)
         , ("follow", Follow <$> lexeme mb_name)
-        , ("feed", Feed <$> lexeme name)
+        , ("feed", Feed <$> lexeme (P.many1 P.anyChar))
         , ("chat", RawCmd <$> chat_command)
         , ("auctionhouse", RawCmd <$> (R.ListAuctions <$> (toEnum . fromIntegral <$> lexeme numeral) <*> lexeme rarity))
         , ("quit", return . RawCmd $ R.Disconnect False)
